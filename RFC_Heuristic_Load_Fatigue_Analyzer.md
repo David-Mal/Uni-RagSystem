@@ -1,7 +1,5 @@
 # RFC: Heuristic Load & Fatigue Analyzer
 
-**Team:** [team name] | **Members:** [names] | **Status:** Draft for Week 4
-
 ## 1. Overview
 
 We will build an agent, powered by a fine-tuned small language model (SLM, 1–3B parameters), that analyzes strength-training logs (CSV exports from Strong/Hevy) and produces **labeled hypotheses** about why a lifter has plateaued. The agent relies on indicators computed by tools, not by the model: estimated 1RM (e1RM), RPE drift, effective sets per muscle group, and uncoupled acute/chronic load. It adds cited background knowledge through RAG. It does not diagnose, prescribe, or give diet advice, and it abstains when the data is insufficient. All tools are exposed through an MCP server.
