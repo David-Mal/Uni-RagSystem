@@ -1,0 +1,22 @@
+flowchart LR
+    CSV["CSV export: Strong or Hevy"] --> DET{"Adapter detection by header"}
+    DET -->|"unknown format"| ERR["Unreadable file: ask for a valid export"]
+    DET --> ADP["App adapter: to canonical sets"]
+    ADP --> NRM["Normalization: kg, set types, failed reps, local dates"]
+    NRM --> DUP["Dedup by content hash, append to log_id"]
+    DUP --> MT["match_exercise_rag: alias, fuzzy, retrieval"]
+    IDX[("Exercise index, see Diagram 4")] -.-> MT
+    MT -->|"low confidence"| UNK["exercise_id = unknown"]
+    MT --> DB[("DuckDB: canonical sets")]
+    UNK --> DB
+    DB --> NOTES["Collect notes and messages"]
+    NOTES --> CACHE{"Note hash in cache?"}
+    CACHE -->|"yes"| GATE["Safety gate"]
+    CACHE -->|"no"| EXT["Batched SLM extraction"]
+    EXT --> GATE
+    classDef det fill:#dbeafe,stroke:#1e40af,color:#111
+    classDef model fill:#fde68a,stroke:#92400e,color:#111
+    classDef store fill:#e5e7eb,stroke:#374151,color:#111
+    class CSV,DET,ADP,NRM,DUP,MT,UNK,NOTES,CACHE,ERR det
+    class EXT,GATE model
+    class DB,IDX store

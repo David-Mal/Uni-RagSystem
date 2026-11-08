@@ -1,0 +1,16 @@
+flowchart TD
+    S["Upload received"] --> P1{"File readable and format recognized?"}
+    P1 -->|"no"| M1["1. Ask for a valid export"]
+    P1 -->|"yes"| P2{"Any note or message red?"}
+    P2 -->|"yes"| M2["2. Fixed referral message, analysis blocked"]
+    P2 -->|"no"| P3{"Sufficient data after yellow exclusions?"}
+    P3 -->|"no"| M3["3. Abstain: say what is missing, add yellow disclaimer if any"]
+    P3 -->|"yes"| P4{"Any yellow?"}
+    P4 -->|"yes"| M4["4. Analysis without affected exercises + disclaimer"]
+    P4 -->|"no"| M5["5. Normal analysis"]
+    classDef stop fill:#fee2e2,stroke:#991b1b,color:#111
+    classDef warn fill:#fef3c7,stroke:#92400e,color:#111
+    classDef ok fill:#dcfce7,stroke:#166534,color:#111
+    class M1,M2,M3 stop
+    class M4 warn
+    class M5 ok

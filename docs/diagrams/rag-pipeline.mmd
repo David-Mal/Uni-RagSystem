@@ -1,0 +1,20 @@
+flowchart LR
+    FEDB["free-exercise-db JSON, pinned commit"] --> DOC1["One entry = one document"]
+    SYN["Synthesis docs: Markdown + front matter"] --> TAG["Review + tag check, build fails if untagged"]
+    TAG --> CHK["Heading-based chunks, 300-500 tokens"]
+    DOC1 --> HASH{"Content hash changed?"}
+    CHK --> HASH
+    HASH -->|"no"| KEEP["Keep existing entries"]
+    HASH -->|"yes"| EMB["Embedding model"]
+    HASH -->|"yes"| BM["BM25 index"]
+    EMB --> VDB[("Chroma: vectors + metadata")]
+    VDB --> RET["Hybrid retrieval with RRF"]
+    BM --> RET
+    RET --> MT["match_exercise_rag: exercise documents"]
+    RET --> RK["retrieve_knowledge: synthesis chunks, filtered by allowed sets"]
+    classDef det fill:#dbeafe,stroke:#1e40af,color:#111
+    classDef model fill:#fde68a,stroke:#92400e,color:#111
+    classDef store fill:#e5e7eb,stroke:#374151,color:#111
+    class FEDB,DOC1,SYN,TAG,CHK,HASH,KEEP,BM,RET,MT,RK det
+    class EMB model
+    class VDB store

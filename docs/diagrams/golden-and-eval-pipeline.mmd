@@ -1,0 +1,28 @@
+flowchart TB
+    TAX["Taxonomy + labeling guideline v0"] --> MAT["Stratified sampling matrix: class x exercise family x style x trap"]
+    MAN["Seed and persona partition manifest"] --> MAT
+    MAT --> AUTH["Authoring of messages and RAG queries by non-builders D and E, sealed label = annotator 1"]
+    AUTH --> BLIND["Blind labeling by the other non-builder = annotator 2"]
+    BLIND --> KAP{"Cohen's kappa >= 0.70 per field?"}
+    KAP -->|"no"| REV["Revise guideline, re-label subset"]
+    REV --> BLIND
+    KAP -->|"yes"| ADJ["Adjudication by D and E, builders excluded"]
+    ADJ --> FRZ["Freeze: git tag + content hash"]
+    subgraph LOGS["Logs layer"]
+        T1["Tier 1: >= 60 curated scenarios, double-annotated"]
+        SIM["Simulator by E, from spec"] --> T2["Tier 2: >= 150 generated scenarios"]
+        REF["Reference implementation by D, from spec"] --> DETV{"Cause detectable?"}
+        T2 --> DETV
+        DETV -->|"no"| DROP["Drop or relabel"]
+        DETV -->|"yes"| AUD["Blind audit of >= 20% sample by D and E"]
+    end
+    T1 --> ADJ
+    AUD --> FRZ
+    DEV["Dev set: training-side seeds, tuning only"] --> TUNE["Prompts, rules, thresholds"]
+    FRZ --> HAR["Evaluation harness, run once per final config"]
+    TUNE --> HAR
+    HAR --> REP["Report: Tier 1, Tier 2, pooled with cluster bootstrap"]
+    classDef nb fill:#dcfce7,stroke:#166534,color:#111
+    classDef gate fill:#fee2e2,stroke:#991b1b,color:#111
+    class AUTH,BLIND,ADJ,SIM,REF,AUD,T1 nb
+    class FRZ,KAP,DETV gate

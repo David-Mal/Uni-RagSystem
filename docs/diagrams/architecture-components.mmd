@@ -1,0 +1,46 @@
+flowchart LR
+    UI["Front end: CLI, Streamlit or notebook"] --> ORC["Orchestrator: fixed stage order"]
+    subgraph ST1["Stage 1: Ingestion"]
+        ING["Adapters + normalization"] --> MER["match_exercise_rag cascade"]
+    end
+    subgraph ST2["Stage 2: Note extraction + Safety gate"]
+        RUL["Deterministic rules, high recall"]
+        EXT["SLM extractor: QLoRA + constrained decoding"]
+        CLS["Triage classifier: separate fine-tune, other family"]
+        AGG["Max severity + fail-safe policy"]
+        RUL --> AGG
+        EXT --> AGG
+        CLS --> AGG
+    end
+    subgraph ST3["Stage 3: Agent loop"]
+        AGT["Agent controller A, B', B or C"]
+        MCPS["MCP server: 7 deterministic tools"]
+        AGT <-->|"closed action schema"| MCPS
+    end
+    subgraph ST4["Stage 4: Claims + verification"]
+        VER["output_verifier"]
+        REN["Deterministic renderer"]
+        VER --> REN
+    end
+    ORC --> ING
+    ORC --> RUL
+    ORC --> EXT
+    ORC --> CLS
+    AGG -->|"red: fixed referral"| ORC
+    AGG -->|"green or yellow + allowed sets"| AGT
+    AGT -->|"JSON claims"| VER
+    VER -->|"fail: one retry"| AGT
+    REN --> UI
+    MER --> DUCK[("DuckDB: sets, values, provenance")]
+    MCPS --> DUCK
+    MCPS --> CHR[("Chroma: exercise + synthesis chunks")]
+    EXT --> CAC[("Extraction cache by note hash")]
+    KDOC[("Knowledge docs + SOURCES.md")] --> CHR
+    VER --> DUCK
+    VER --> CHR
+    classDef det fill:#dbeafe,stroke:#1e40af,color:#111
+    classDef model fill:#fde68a,stroke:#92400e,color:#111
+    classDef store fill:#e5e7eb,stroke:#374151,color:#111
+    class UI,ORC,ING,MER,RUL,AGG,MCPS,VER,REN det
+    class EXT,CLS,AGT model
+    class DUCK,CHR,CAC,KDOC store

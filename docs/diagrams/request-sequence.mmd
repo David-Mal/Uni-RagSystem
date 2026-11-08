@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant O as Orchestrator
+    participant I as Ingestion
+    participant G as Safety gate
+    participant A as Agent
+    participant T as MCP tools
+    participant V as output_verifier
+    participant R as Renderer
+    U->>O: CSV export + optional message
+    O->>I: ingest_workout_log(file)
+    alt unreadable or unknown format
+        I-->>O: parse error
+        O-->>U: Ask for a valid Strong or Hevy export
+    else parsed
+        I-->>O: log_id, notes, unmatched names
+        O->>G: assess(notes, message)
+        Note over G: per note: rules + extractor + classifier, cached by note hash
+        opt model signal fails after one retry
+            G->>G: mark unassessed_by_model, floor at yellow
+        end
+        alt any note or message is red
+            G-->>O: red
+            O-->>U: Fixed referral message, analysis blocked
+        else green or yellow
+            G-->>O: level, excluded exercise_ids, disclaimer flags
+            O->>A: start(log_id, allowed_exercise_ids, allowed_hypotheses)
+            A->>T: check_data_sufficiency(log_id)
+            T-->>A: reasons, allowed analyses
+            alt insufficient data
+                A-->>O: abstain(reasons)
+            else sufficient
+                loop until done or step budget reached
+                    A->>T: analysis tool call
+                    T-->>A: compact summary with value_ids
+                end
+                A->>T: retrieve_knowledge(query, allowed sets)
+                T-->>A: chunk_ids
+                A-->>O: JSON claims
+            end
+            O->>V: verify(claims, tool values, chunk store)
+            alt verification fails
+                V-->>O: errors
+                O->>A: one retry with error list
+                A-->>O: revised claims
+                O->>V: verify again
+                V-->>O: pass, or fall back to template or abstain
+            else pass
+                V-->>O: ok
+            end
+            O->>R: render(claims, disclaimers)
+            R-->>U: Hypotheses + numbers + citations + disclaimers
+        end
+    end

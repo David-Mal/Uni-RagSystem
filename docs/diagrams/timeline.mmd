@@ -1,0 +1,36 @@
+gantt
+    title Plan Week 6 to Week 14
+    dateFormat YYYY-MM-DD
+    axisFormat %d %b
+    section Foundations
+    W6 M2 doc + skeleton + schemas + manifest :w6, 2026-11-02, 5d
+    section Data and tools
+    W7 Adapters + matching + rules + simulator v0 :w7, 2026-11-09, 5d
+    W8 Three tools + MCP skeleton + reference impl :w8, 2026-11-16, 5d
+    W9 Load tool + retrieval + E1 pruning :w9, 2026-11-23, 5d
+    W10 E1 final + E2 ablation :w10, 2026-11-30, 5d
+    section Models
+    W7-8 Harness + zero/few-shot/CD baselines :b1, 2026-11-09, 10d
+    W8 Training data v1 + leakage audit :b2, 2026-11-16, 5d
+    W9 QLoRA smoke run + classifier design with A :b3, 2026-11-23, 5d
+    W10 Full QLoRA + classifier, unattended :b4, 2026-11-30, 5d
+    W10-12 E3 golden runs, unattended :b5, 2026-12-04, 15d
+    section Golden set
+    W6-9 Golden messages authoring :g1, 2026-11-02, 26d
+    W9-10 Double annotation + kappa :g2, 2026-11-23, 12d
+    W9-10 RAG query set + relevance labels :g4, 2026-11-23, 10d
+    Messages + RAG query set frozen :milestone, gm, 2026-12-04, 0d
+    W10-11 Tier 1 + Tier 2 audit :g3, 2026-11-30, 12d
+    Logs layer frozen :milestone, gl, 2026-12-11, 0d
+    section Agent
+    W9 output_verifier v0 :a0, 2026-11-23, 5d
+    W11 Orchestrator + gate + controllers :a1, 2026-12-07, 5d
+    W12 End-to-end + first results :a2, 2026-12-14, 5d
+    Week 12 checkpoint :milestone, m12, 2026-12-18, 0d
+    E5 + E7 runs, unattended :u1, 2026-12-18, 17d
+    section Holidays
+    Winter break, no human work :crit, h1, 2026-12-21, 14d
+    Days off Jan 6-7 :crit, h2, 2027-01-06, 2d
+    section Final
+    W13 Analysis E5 to E8, about 3 working days :f1, 2027-01-04, 7d
+    W14 Report + presentation + release :f2, 2027-01-11, 7d
