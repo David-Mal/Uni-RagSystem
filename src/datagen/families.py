@@ -49,6 +49,8 @@ class PhrasingFamily:
     render: Renderer
     hard_negative: str | None = None
     """``None`` for regular families, else the hard-negative kind: ``figurative``, ``negated`` or ``mixed``."""
+    task: str = "extractor"
+    """``extractor`` or ``triage``: the triage classifier has its own families, disjoint from the extractor's (F8)."""
 
 
 # ---------------------------------------------------------------- formatting helpers
@@ -323,3 +325,59 @@ FAMILIES: dict[str, PhrasingFamily] = {
         ),
     )
 }
+
+
+# ---------------------------------------------------------------- triage-classifier families (F8, plan §6.4)
+# Note-style texts centred on how the body felt; disjoint from the extractor families above.
+
+
+def _short_note(s: Slots, rng: random.Random) -> str:
+    lead = f"{s.exercise} day" if s.exercise else rng.choice(("training today", "session done", "gym"))
+    return ". ".join([lead, *clauses(s)]).lower()
+
+
+def _coach_checkin(s: Slots, rng: random.Random) -> str:
+    where = f"after {s.exercise}" if s.exercise else "after today's session"
+    body = "; ".join(clauses(s)) or "nothing special to report"
+    return f"Hi coach, quick check-in {where}: {body}."
+
+
+def _set_comment(s: Slots, rng: random.Random) -> str:
+    tag = f"[{s.exercise}]" if s.exercise else "[workout]"
+    return f"{tag} " + (" | ".join(clauses(s)) or "ok")
+
+
+def _voice_memo(s: Slots, rng: random.Random) -> str:
+    filler = rng.choice(("so um", "okay so", "right so"))
+    return f"{filler}, {s.exercise or 'the workout'}, " + ", ".join(clauses(s) or ["all good"]) + ", yeah"
+
+
+FAMILIES.update(
+    {
+        f.family_id: f
+        for f in (
+            PhrasingFamily("pf_tr_cls_short_note", "train", "short lowercase note", _short_note, task="triage"),
+            PhrasingFamily(
+                "pf_tr_cls_coach_checkin", "train", "check-in message to a coach", _coach_checkin, task="triage"
+            ),
+            PhrasingFamily("pf_tr_cls_set_comment", "train", "bracketed per-set comment", _set_comment, task="triage"),
+            PhrasingFamily(
+                "pf_tr_cls_hn_effort",
+                "train",
+                "hard negatives (figurative or negated) as short notes",
+                _short_note,
+                hard_negative="mixed",
+                task="triage",
+            ),
+            PhrasingFamily("pf_dev_cls_voice_memo", "dev", "transcribed voice memo", _voice_memo, task="triage"),
+            PhrasingFamily(
+                "pf_dev_cls_hn_memo",
+                "dev",
+                "hard negatives (figurative or negated) as voice memos",
+                _voice_memo,
+                hard_negative="mixed",
+                task="triage",
+            ),
+        )
+    }
+)

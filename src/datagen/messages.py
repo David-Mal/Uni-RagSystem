@@ -39,6 +39,7 @@ GENERATOR_NAME = "template"
 GENERATOR_VERSION = "v0"
 GENERATOR = f"{GENERATOR_NAME}-{GENERATOR_VERSION}"
 ALLOWED_POOLS = ("train", "dev")
+TASKS = ("extractor", "triage")
 
 # Sampling probabilities (documented in docs/datagen-messages.md)
 P_UNKNOWN_EXERCISE = 0.10  # half unresolvable phrase, half no exercise mentioned
@@ -90,11 +91,11 @@ def _weighted(rng: random.Random, weights: Mapping[Any, float]) -> Any:
     return rng.choices(keys, weights=[weights[k] for k in keys], k=1)[0]
 
 
-def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool) -> list[PhrasingFamily]:
-    """Families of this module that the manifest puts in ``pool``. Never returns a golden-pool family."""
+def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool, task: str) -> list[PhrasingFamily]:
+    """Families of this module for ``task`` that the manifest puts in ``pool``. Never returns a golden-pool family."""
     out = []
     for fam in FAMILIES.values():
-        if (fam.hard_negative is not None) != hard_negative:
+        if fam.task != task or (fam.hard_negative is not None) != hard_negative:
             continue
         try:
             actual = registry.pool_of("phrasing_families", fam.family_id)
@@ -133,16 +134,27 @@ def _symptom(level: TriageLevel, part: str, hn_kind: str | None, rng: random.Ran
 
 
 def generate_item(
-    level: TriageLevel, seed: int, pool: str, registry: PoolRegistry, paraphraser: Paraphraser | None = None
+    level: TriageLevel,
+    seed: int,
+    pool: str,
+    registry: PoolRegistry,
+    paraphraser: Paraphraser | None = None,
+    task: str = "extractor",
 ) -> dict[str, Any]:
-    """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation."""
+    """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation.
+
+    ``task`` selects the family set: ``extractor`` (default) or ``triage`` (classifier families, F8).
+    """
     if pool not in ALLOWED_POOLS:
         raise PoolError(f"generator only writes pools {ALLOWED_POOLS}, got {pool!r}")
+    if task not in TASKS:
+        raise ValueError(f"task must be one of {TASKS}, got {task!r}")
     registry.assert_in_pool(pool, seed=seed)
-    rng = random.Random(f"{GENERATOR}|{seed}|{level.value}")
+    key = f"{GENERATOR}|{seed}|{level.value}" if task == "extractor" else f"{GENERATOR}|{task}|{seed}|{level.value}"
+    rng = random.Random(key)
 
     hard_negative = rng.random() < P_HARD_NEGATIVE[level]
-    families = _families_for(pool, registry, hard_negative) or _families_for(pool, registry, False)
+    families = _families_for(pool, registry, hard_negative, task) or _families_for(pool, registry, False, task)
     if not families:
         raise PoolError(f"no phrasing family of this generator is in the {pool!r} pool of the manifest")
     family = rng.choice(families)
