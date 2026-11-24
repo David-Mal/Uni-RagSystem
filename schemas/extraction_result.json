@@ -1,0 +1,129 @@
+{
+  "$comment": "schema_version=v0",
+  "$defs": {
+    "KinematicObservation": {
+      "description": "What the user reported about how the set moved (v0, plan §6.3).\n\nThis records the user's own words, never a form diagnosis made by the system.",
+      "enum": [
+        "none",
+        "slow_bar_speed",
+        "grinding_rep",
+        "reduced_range_of_motion",
+        "lost_balance",
+        "other"
+      ],
+      "title": "KinematicObservation",
+      "type": "string"
+    },
+    "Load": {
+      "additionalProperties": false,
+      "description": "A load as reported by the user, in the user's unit (conversion to kg happens in ingest).",
+      "properties": {
+        "unit": {
+          "enum": [
+            "kg",
+            "lb"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "description": "Load magnitude; 0 is allowed for bodyweight-only sets.",
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "title": "Load",
+      "type": "object"
+    },
+    "Outcome": {
+      "description": "Outcome of the set described in a note or message.",
+      "enum": [
+        "completed",
+        "failed",
+        "partial"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "TriageLevel": {
+      "description": "Safety triage level of a note or message (plan §5.3).\n\n``green``: no symptoms. ``yellow``: mild discomfort, stiffness, persistent soreness.\n``red``: sharp pain, swelling, dizziness, chest pain. Ordered by severity: green < yellow < red.",
+      "enum": [
+        "green",
+        "yellow",
+        "red"
+      ],
+      "title": "TriageLevel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Structured extraction of one note or free-text message (plan §6.3).",
+  "properties": {
+    "exercise_id": {
+      "description": "free-exercise-db id, or 'unknown' when the exercise cannot be resolved.",
+      "title": "Exercise Id",
+      "type": "string"
+    },
+    "kinematic_observation": {
+      "$ref": "#/$defs/KinematicObservation",
+      "description": "What the user reported about the movement; never a form diagnosis."
+    },
+    "load": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Load"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "reps": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reps"
+    },
+    "rpe": {
+      "anyOf": [
+        {
+          "maximum": 10,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rpe"
+    },
+    "triage_level": {
+      "$ref": "#/$defs/TriageLevel"
+    }
+  },
+  "required": [
+    "exercise_id",
+    "kinematic_observation",
+    "outcome",
+    "triage_level"
+  ],
+  "title": "ExtractionResult",
+  "type": "object"
+}
