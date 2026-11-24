@@ -1,7 +1,7 @@
 # Milestone 2: Architecture and Project Plan
 ## Heuristic Load & Fatigue Analyzer
 
-**Team:** [team name] | **Members:** [Member A], [Member B], [Member C], [Member D], [Member E] | **Status:** Milestone 2, Week 6 (Nov 2-6, 2026)
+**Team:** Winged Hussars | **Members:** David Malutan, Fineas Bene, Matia Opris, Filip Bumbar, Patrick Marchis | **Status:** Milestone 2, Week 6 (Nov 2-6, 2026)
 **Baseline:** [`RFC_Heuristic_Load_Fatigue_Analyzer.md`](../RFC_Heuristic_Load_Fatigue_Analyzer.md) (Week 4 RFC). Departures from the RFC are listed in [Section 10](#10-changes-relative-to-the-rfc).
 
 > **State of the repository.** At the time of writing the repository contains only the RFC and this document. **Nothing described below is built yet.** Every component, path and file name (`src/...`, `data/...`, `SOURCES.md`) is a design target. Markers used in this document:
