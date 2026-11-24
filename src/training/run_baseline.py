@@ -48,9 +48,17 @@ def read_jsonl(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
     return rows[:limit] if limit else rows
 
 
-def load_model(name: str, quant: str) -> tuple[Any, Any]:  # pragma: no cover - needs the ml group
-    """Load tokenizer + causal LM. ``quant``: ``none`` (fp16 on GPU) or ``4bit`` (bitsandbytes NF4, for small GPUs)."""
+def compute_dtype() -> Any:  # pragma: no cover - needs torch
+    """fp16 on Volta+ GPUs; fp32 on older GPUs (Pascal fp16 throughput is 1/64 of fp32) and on CPU."""
     import torch
+
+    if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 7:
+        return torch.float16
+    return torch.float32
+
+
+def load_model(name: str, quant: str) -> tuple[Any, Any]:  # pragma: no cover - needs the ml group
+    """Load tokenizer + causal LM. ``quant``: ``none`` (fp16 on Volta+, fp32 otherwise) or ``4bit`` (bitsandbytes NF4, for small GPUs)."""
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     tok = AutoTokenizer.from_pretrained(name)
@@ -60,10 +68,10 @@ def load_model(name: str, quant: str) -> tuple[Any, Any]:  # pragma: no cover - 
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=compute_dtype(),
         )
     else:
-        kwargs["torch_dtype"] = torch.float16 if torch.cuda.is_available() else torch.float32
+        kwargs["torch_dtype"] = compute_dtype()
     model = AutoModelForCausalLM.from_pretrained(name, **kwargs)
     model.eval()
     return tok, model
