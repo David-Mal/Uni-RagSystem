@@ -2,31 +2,34 @@
 doc_id: syn05
 title: "Load monitoring"
 topic_tags: ["load_monitoring", "fatigue_load"]
-citation_keys: ["lolli2019", "impellizzeri2020"]
+citation_keys: ["nobari2022", "zouhal2021"]
 ---
 
 # Load monitoring
 
-> Draft blocked for corpus approval: source-license clearance, full-text access to Impellizzeri, human verification and non-author review remain [TO VERIFY].
+> Draft: human verification and non-author review are pending. Historical mandatory references remain in SOURCES.md pending confirmation of the issue requirement.
 
 ## Coupled and uncoupled ratios
 
 Acute workload summarizes recent exposure; chronic workload covers a longer
 reference period. Their ratio does not independently measure adaptation or
-fatigue. A coupled calculation includes the
-acute observations in the chronic reference. For the conventional four-week
-example discussed by Lolli and colleagues, the denominator averages the acute
-week together with three preceding weeks. Their analysis demonstrates that
-shared observations can create correlation by construction
-[lolli2019](SOURCES.md#lolli2019).
+fatigue. Nobari and colleagues describe a coupled calculation that divides the
+current week's load by a rolling four-week average containing that week. Their
+uncoupled version divides it by the average of the three preceding weeks,
+excluding the current week [nobari2022](SOURCES.md#nobari2022).
 
-An uncoupled calculation excludes acute observations from the chronic reference.
-Removing overlap addresses the shared-term problem without validating the ratio.
-The accessible abstract of Impellizzeri
-and colleagues' critique also questions normalization by ratios, including
-uncoupled versions [impellizzeri2020](SOURCES.md#impellizzeri2020). Detailed
-full-text verification remains [TO VERIFY]; the abstract is not a substitute
-for reading the original article.
+That study monitored professional soccer players using session-RPE and
+GPS-derived variables. Those measures and that population differ from this
+project's strength-training logs. The definitions explain the overlap distinction;
+they do not establish a universal monitoring window or validate tonnage-based
+inferences.
+
+Zouhal and colleagues' editorial summarizes methodological disagreement,
+including heterogeneous load measures and insufficient rationale for particular
+time windows [zouhal2021](SOURCES.md#zouhal2021). It is an editorial, not a new
+experiment. Its discussion provides context for limitations rather than original
+experimental estimates. Excluding overlapping observations does not, by itself,
+settle the ratio's interpretation.
 
 The project follows
 [architecture plan section 5.7](../milestone2-architecture-and-plan.md):

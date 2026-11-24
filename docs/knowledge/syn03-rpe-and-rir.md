@@ -26,9 +26,10 @@ estimating repetitions to failure. That convention does not make an unreported
 effort rating recoverable from a load or repetition count.
 
 RPE drift in this project is the slope of logged RPE at comparable load. The
-plan specifies loads within 5% and at least four observations. These are project
-comparability and sufficiency rules, not published universal fatigue
-boundaries. An upward trend means the recorded work was being rated as harder;
+plan's section 2.5 requires RPE on at least 50% of working sets and at least four
+comparable-load sessions. Section 5.7 specifies loads within 5% and at least four
+points. These are project rules, not universal fatigue boundaries.
+An upward trend means the recorded work was being rated as harder;
 it supports the qualified `fatigue_accumulation` hypothesis rather than
 identifying a unique cause.
 
@@ -38,7 +39,7 @@ exercise identity, repetition counts and rating coverage visible when comparing
 sessions. Missing ratings cannot be replaced by assumed effort, and changing the
 task can weaken comparability even when the external load looks similar.
 
-Exact aggregation, the slope's time unit and any decision cutoff are
-[TO VERIFY] with the numerical specification owner. Do not invent them here.
+Section 3.4 illustrates drift per week. Exact aggregation and any decision cutoff
+remain [TO VERIFY] with the numerical specification owner.
 If the supplied records cannot support a comparable series, explain that drift
 was not assessed rather than asserting fatigue from sparse entries.

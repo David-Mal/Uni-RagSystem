@@ -39,6 +39,7 @@ are resolved.
 
 Keep a draft notice before the first section while review is pending. Count
 section bodies, excluding front matter, title, notice and section heading.
-Estimate tokens as ceiling of body characters divided by four, including
-citations and equations; this is not a model tokenizer. Recheck with the chosen
-tokenizer. SOURCES.md records current estimates and outstanding checks.
+Use the corpus tokenizer when specified. Until then, validate with tiktoken
+`cl100k_base` as a temporary reference, not a final tokenizer choice. Count the
+trimmed section body, including links, code and equations, without added special
+tokens. SOURCES.md records the exact method, runtime and actual counts.
