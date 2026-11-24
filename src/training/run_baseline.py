@@ -26,7 +26,8 @@ import yaml
 from src.schemas import extraction_json_schema
 from src.training.extraction_io import build_prompt, default_exercise_ids, parse_output, pick_fewshot
 
-SETUPS = ("zero_shot", "few_shot", "zero_shot_cd", "few_shot_cd")
+SETUPS = ("zero_shot", "few_shot", "zero_shot_cd", "few_shot_cd", "ft", "ft_cd")
+"""``ft``/``ft_cd`` load a QLoRA adapter (``--adapter``, F6) and use the short fine-tuning prompt."""
 
 
 def _sha256(path: Path) -> str:
@@ -58,7 +59,7 @@ def compute_dtype() -> Any:  # pragma: no cover - needs torch
 
 
 def load_model(name: str, quant: str) -> tuple[Any, Any]:  # pragma: no cover - needs the ml group
-    """Load tokenizer + causal LM. ``quant``: ``none`` (fp16 on Volta+, fp32 otherwise) or ``4bit`` (bitsandbytes NF4, for small GPUs)."""
+    """Load tokenizer + causal LM. ``quant``: ``none`` (fp16 on Volta+, else fp32) or ``4bit`` (bitsandbytes NF4)."""
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     tok = AutoTokenizer.from_pretrained(name)
@@ -132,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
     parser.add_argument("--limit", type=int, help="first N items only (smoke runs)")
     parser.add_argument("--quant", choices=("none", "4bit"), default="none")
     parser.add_argument("--max-new-tokens", type=int, default=160)
+    parser.add_argument("--adapter", type=Path, help="LoRA adapter directory (required for ft / ft_cd)")
     args = parser.parse_args(argv)
 
     import torch
@@ -141,6 +143,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
     ids = default_exercise_ids()
     shots = pick_fewshot(read_jsonl(args.train)) if args.setup.startswith("few_shot") else []
     tok, model = load_model(args.model, args.quant)
+    if args.setup.startswith("ft"):
+        if args.adapter is None:
+            parser.error("--adapter is required for ft / ft_cd")
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, str(args.adapter))
+        model.eval()
     schema = extraction_json_schema(ids) if args.setup.endswith("_cd") else None
     generate = Generator(tok, model, schema, args.max_new_tokens)
 
@@ -185,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
         "decoding": "greedy",
         "data_sha256": _sha256(args.data),
         "few_shot_item_ids": [s["item_id"] for s in shots],
+        "adapter": str(args.adapter) if args.adapter else None,
         "exercise_vocab_size": len(ids),
         "versions": {
             "python": platform.python_version(),

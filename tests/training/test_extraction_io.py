@@ -68,3 +68,8 @@ def test_parse_errors(raw: str, code: str) -> None:
 def test_parse_rejects_id_outside_vocabulary() -> None:
     raw = label_json({**LABELS, "exercise_id": "Made_Up_Press"})
     assert parse_output(raw, exercise_ids=["Barbell_Squat", "unknown"]) == (None, "schema_error")
+
+
+def test_ft_prompt_is_short_and_has_no_vocabulary() -> None:
+    p = build_prompt("bench 100kg x5", "ft_cd", ["Barbell_Squat"])
+    assert p.endswith("Note: bench 100kg x5\n") and "Barbell_Squat" not in p and len(p) < 250

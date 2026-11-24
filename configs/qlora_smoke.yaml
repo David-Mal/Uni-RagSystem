@@ -1,0 +1,26 @@
+# QLoRA smoke run (issue F6, plan §6.3, §6.6). Reproducible from this file:
+#   python -m src.training.train_qlora --config configs/qlora_smoke.yaml
+base_model: Qwen/Qwen3-1.7B
+train_file: data/training/train.jsonl     # first cut: the first n_train items (train_v1)
+n_train: 500
+output_dir: results/E3/smoke
+seed: 13
+epochs: 1
+max_length: 256          # notes are short; prompt + JSON answer stays below this
+batch_size: 1
+grad_accum: 8            # effective batch 8
+learning_rate: 2.0e-4
+lr_scheduler: cosine
+warmup_ratio: 0.05
+logging_steps: 5
+gradient_checkpointing: true
+quantization:            # bitsandbytes 4-bit NF4 with double quantization
+  load_in_4bit: true
+  quant_type: nf4
+  double_quant: true
+  compute_dtype: auto    # fp16/bf16 on Volta+ GPUs; fp32 on Pascal (fp16 is 1/64 rate there) and CPU
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]   # attention + MLP
