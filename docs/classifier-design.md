@@ -98,3 +98,18 @@ class ClassifierSignal:                      # implements D9's ModelSignal proto
 LoRA-wraps the model, trains a few steps, evaluates on 30 dev items, and writes `metrics.json`, `config.yaml` and
 `run_manifest.json` (library versions, GPU, peak memory, data sha256) under `results/E4/classifier_smoke/<run_id>/`.
 `--model` overrides the base model, e.g. with a tiny model for a pipeline-only check.
+
+### Smoke result (2026-11-24, local)
+
+Pipeline check with `--model Qwen/Qwen3-0.6B` (ungated stand-in; the real base model follows §2) on data generated
+from the test stub manifest. 50 train / 30 dev items, 6 optimizer steps: **ran end to end in 6.5 s on a GTX 1050 Ti
+(4 GB)**, peak GPU memory **3.6 GB** (fp32 weights + fp16 autocast). All three run files were written. The metrics are
+meaningless at 6 steps (red recall 0.0), as expected.
+
+Findings for week 10:
+- `grad_norm` was `inf` on the first steps: the AMP grad scaler skips overflow steps while it calibrates. A real run
+  (hundreds of steps) is unaffected, but use warmup steps and check that the logged loss decreases.
+- 1B in fp32 (~5 GB) does not fit a 4 GB GPU. Train on Colab/Kaggle (T4 16 GB: fp32 weights + fp16 AMP; Ampere+:
+  `load_dtype: bfloat16` with bf16 AMP).
+- `meta-llama/Llama-3.2-1B-Instruct` is gated: accept the license and set `HF_TOKEN` before week 10.
+

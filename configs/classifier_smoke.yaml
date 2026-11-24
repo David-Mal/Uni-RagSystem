@@ -12,7 +12,8 @@ batch_size: 16
 grad_accum: 1
 learning_rate: 2.0e-4
 epochs: 3
-fp16: true
+fp16: true               # AMP autocast; weights loaded as load_dtype
+load_dtype: float32      # use bfloat16 on Ampere+ GPUs (Colab A100/L4) to halve memory
 logging_steps: 20
 lora:
   r: 16

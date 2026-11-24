@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--smoke", action="store_true", help="50 items, a few steps, tiny eval")
     parser.add_argument("--model", help="override base_model (e.g. a tiny model for a pipeline check)")
+    parser.add_argument("--train-file", help="override train_file")
+    parser.add_argument("--dev-file", help="override dev_file")
+    parser.add_argument("--output-dir", help="override output_dir")
     args = parser.parse_args(argv)
 
     import peft
@@ -75,6 +78,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
         cfg["base_model"] = args.model
     if args.smoke:
         cfg.update(cfg.get("smoke", {}))
+    for key in ("train_file", "dev_file", "output_dir"):
+        if getattr(args, key):
+            cfg[key] = getattr(args, key)
     transformers.set_seed(cfg["seed"])
     run_id = time.strftime("%Y%m%d-%H%M%S") + ("-smoke" if args.smoke else "")
     out_dir = Path(cfg["output_dir"]) / run_id
@@ -91,7 +97,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
         num_labels=len(LABELS),
         id2label=ID2LABEL,
         label2id=LABEL2ID,
-        torch_dtype=torch.float16 if torch.cuda.is_available() and cfg.get("fp16") else torch.float32,
+        # Weights stay fp32 so the LoRA params are fp32 too; fp16 is used only as autocast (AMP) when enabled.
+        torch_dtype=getattr(torch, cfg.get("load_dtype", "float32")),
     )
     model.config.pad_token_id = tok.pad_token_id
     lora = LoraConfig(
