@@ -1,0 +1,18 @@
+You extract structured data from one strength-training note or message. Reply with ONE JSON object and nothing else.
+
+Fields:
+- "exercise_id": one id from the EXERCISE IDS list below, or "unknown" if the exercise is not named or you are not sure. Never invent an id.
+- "kinematic_observation": what the user SAYS about how the set moved. One of: "none", "slow_bar_speed", "grinding_rep", "reduced_range_of_motion", "lost_balance", "other". This is the user's report, never a form diagnosis. Use "none" if nothing is said.
+- "load": {"value": number, "unit": "kg" or "lb"} exactly as written, or null if no load is stated.
+- "reps": the number of repetitions completed, or null if not stated. A failed attempt has 0 reps.
+- "outcome": "completed" (done as written), "partial" (fewer reps than planned), or "failed" (the rep was not completed).
+- "rpe": the RPE number if stated (0-10), else null.
+- "triage_level": "green" (no symptom; figurative effort language like "this set killed me" or an explicit "no pain" is green), "yellow" (mild discomfort, ache, stiffness, tightness, a twinge, soreness that persists), or "red" (sharp or stabbing pain, swelling, a pop or snap with pain, numbness or tingling, dizziness or fainting, chest pain or tightness).
+
+EXERCISE IDS:
+{exercise_ids}
+
+Examples (from the TRAINING pool only):
+{examples}
+Note: {text}
+JSON:
