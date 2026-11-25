@@ -1,0 +1,20 @@
+{"query_id": "syn_q01", "corpus": "synthesis", "query": "How do weekly set counts relate to strength gains in meta-analyses?", "doc_id": "syn01", "section": "Weekly effective sets and dose response", "char_start": 265, "char_end": 760}
+{"query_id": "syn_q02", "corpus": "synthesis", "query": "How are primary and secondary muscles weighted in effective set counting?", "doc_id": "syn01", "section": "Weekly effective sets and dose response", "char_start": 762, "char_end": 1292}
+{"query_id": "syn_q03", "corpus": "synthesis", "query": "What is the difference between sets per exercise and weighted sets per muscle?", "doc_id": "syn01", "section": "Weekly effective sets and dose response", "char_start": 1294, "char_end": 1751}
+{"query_id": "syn_q04", "corpus": "synthesis", "query": "Which equations are used to estimate one-repetition maximum from submaximal sets?", "doc_id": "syn02", "section": "Intensity, equations and estimation limits", "char_start": 937, "char_end": 1552}
+{"query_id": "syn_q05", "corpus": "synthesis", "query": "Why are sets above 10 repetitions excluded from e1RM estimation?", "doc_id": "syn02", "section": "Intensity, equations and estimation limits", "char_start": 1554, "char_end": 2013}
+{"query_id": "syn_q06", "corpus": "synthesis", "query": "How does repetitions in reserve RIR relate to perceived exertion RPE?", "doc_id": "syn03", "section": "Effort, reserve and comparable-load drift", "char_start": 259, "char_end": 726}
+{"query_id": "syn_q07", "corpus": "synthesis", "query": "How is RPE drift defined at comparable load across sessions?", "doc_id": "syn03", "section": "Effort, reserve and comparable-load drift", "char_start": 1097, "char_end": 1571}
+{"query_id": "syn_q08", "corpus": "synthesis", "query": "What distinguishes progressive overload from stagnant load progression?", "doc_id": "syn04", "section": "Progression and interpreting stagnation", "char_start": 1121, "char_end": 1519}
+{"query_id": "syn_q09", "corpus": "synthesis", "query": "Why does coupling the acute window inside the chronic window distort workload ratios?", "doc_id": "syn05", "section": "Coupled and uncoupled ratios", "char_start": 356, "char_end": 802}
+{"query_id": "syn_q10", "corpus": "synthesis", "query": "How are acute and chronic workload windows defined without mathematical coupling?", "doc_id": "syn05", "section": "Coupled and uncoupled ratios", "char_start": 1554, "char_end": 2007}
+{"query_id": "ex_q01", "corpus": "exercises", "query": "flat barbell chest press compound push", "exercise_id": "Barbell_Bench_Press_-_Medium_Grip"}
+{"query_id": "ex_q02", "corpus": "exercises", "query": "hip hinge hamstring barbell deadlift variant", "exercise_id": "Romanian_Deadlift"}
+{"query_id": "ex_q03", "corpus": "exercises", "query": "standing barbell overhead shoulder press", "exercise_id": "Standing_Military_Press"}
+{"query_id": "ex_q04", "corpus": "exercises", "query": "barbell back squat quadriceps glutes compound", "exercise_id": "Barbell_Squat"}
+{"query_id": "ex_q05", "corpus": "exercises", "query": "horizontal barbell row for middle back and lats", "exercise_id": "Bent_Over_Barbell_Row"}
+{"query_id": "ex_q06", "corpus": "exercises", "query": "dumbbell side raise isolation for shoulders", "exercise_id": "Side_Lateral_Raise"}
+{"query_id": "ex_q07", "corpus": "exercises", "query": "cable triceps pushdown with v bar attachment", "exercise_id": "Triceps_Pushdown_-_V-Bar_Attachment"}
+{"query_id": "ex_q08", "corpus": "exercises", "query": "neutral grip dumbbell curl for biceps and forearms", "exercise_id": "Hammer_Curls"}
+{"query_id": "ex_q09", "corpus": "exercises", "query": "machine seated leg extension for quadriceps", "exercise_id": "Leg_Extensions"}
+{"query_id": "ex_q10", "corpus": "exercises", "query": "cable rope pull toward face for rear delts and upper back", "exercise_id": "Face_Pull"}
