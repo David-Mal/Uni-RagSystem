@@ -6,11 +6,14 @@ import csv
 import hashlib
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.ingest.adapters.base import AdapterRegistry, SourceProbe
+from src.ingest.adapters.hevy import HevyAdapter
 from src.ingest.adapters.opengym import OpenGymAdapter
+from src.ingest.adapters.strong import StrongAdapter
 from src.ingest.errors import IngestError
 from src.ingest.model import IngestFlag, Note
 from src.ingest.normalize import implausible_weight_flags, unit_mix_flags
@@ -33,9 +36,9 @@ class IngestResult(BaseModel):
     flags: list[IngestFlag]
 
 
-def default_registry() -> AdapterRegistry:
-    """The adapters shipped with the project."""
-    return AdapterRegistry([OpenGymAdapter()])
+def default_registry(unit_hint: Literal["kg", "lb"] | None = None) -> AdapterRegistry:
+    """The adapters shipped with the project. ``unit_hint`` is for Strong files without a unit in the header."""
+    return AdapterRegistry([OpenGymAdapter(), StrongAdapter(unit_hint), HevyAdapter()])
 
 
 def ingest_workout_log(
@@ -46,17 +49,19 @@ def ingest_workout_log(
     store: SetStore | None = None,
     registry: AdapterRegistry | None = None,
     matcher: Callable[[str], str | None] | None = None,
+    unit_hint: Literal["kg", "lb"] | None = None,
 ) -> IngestResult:
     """Parse, normalize and store one export file.
 
     ``log_id`` is the namespace of one lifter: pass the same id to add a newer export, and only unseen workouts are
     appended. Without it, the id is derived from the file content, so the same file always gives the same id.
-    ``matcher`` maps a raw exercise name to an exercise id (``None`` or ``"unknown"`` if it cannot).
+    ``matcher`` maps a raw exercise name to an exercise id (``None`` or ``"unknown"`` if it cannot). ``unit_hint`` is used
+    only for formats that do not state the weight unit (Strong).
 
     Raises ``IngestError`` if the file cannot be read; nothing is stored in that case.
     """
     probe = SourceProbe.from_path(path)
-    adapter = (registry if registry is not None else default_registry()).select(probe, app_hint)
+    adapter = (registry if registry is not None else default_registry(unit_hint)).select(probe, app_hint)
     try:
         canonical = adapter.to_canonical(probe.path)
         digest = hashlib.sha256(probe.path.read_bytes()).hexdigest()

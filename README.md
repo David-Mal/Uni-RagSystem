@@ -13,18 +13,18 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then, fro
 or Linux):
 
 ```
-uv sync --group rag
+uv sync
 uv run pytest
 uv run ruff check
 ```
 
-`uv` downloads Python 3.11 if it is missing. `uv sync` installs the `core` and `dev` groups. The others are opt-in:
+`uv` downloads Python 3.11 if it is missing. `uv sync` installs the `core`, `rag`, `mcp` and `dev` groups. The others are opt-in:
 
 | Group | Install | Contents |
 |---|---|---|
-| `rag` | `uv sync --group rag` | Chroma, BM25 (tests of `src/rag` need it) |
-| `embed` | `uv sync --group rag --group embed` | sentence-transformers, to build the real index: `uv run python -m src.rag.build` |
-| `mcp` | `uv sync --group mcp` | Official MCP Python SDK |
+| `rag` | default | Chroma, BM25 (tests of `src/rag` need it) |
+| `embed` | `uv sync --group embed` | sentence-transformers, to build the real index: `uv run python -m src.rag.build` |
+| `mcp` | default | Official MCP Python SDK |
 | `ml` | `uv sync --group ml` | transformers, PEFT, TRL, bitsandbytes, Outlines (needs a GPU, never installed in CI) |
 
 Add a dependency with `uv add --group <group> <package>` and commit `uv.lock` in the same PR.
