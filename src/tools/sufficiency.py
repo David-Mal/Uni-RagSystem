@@ -1,7 +1,7 @@
 """Tool: ``check_data_sufficiency`` (issue M2, #33; plan §2.5, §5.7).
 
 Decides what analyses can run on a stored workout log and when the system must abstain
-(fully or partially). Thresholds are loaded from ``configs/indicators.yaml``.
+(fully or partially). Implements section 6 of ``docs/indicator-spec.md``; thresholds are in ``configs/indicators.yaml``.
 """
 
 from __future__ import annotations
@@ -13,29 +13,29 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-import yaml
 from pydantic import Field
 
-from src.tools._common_provisional import ToolResult
+from src.tools.common import (
+    Provenance,
+    ToolResult,
+    Value,
+    ValueIdFactory,
+    config_hash,
+    load_indicator_config,
+)
 
-TOOL_VERSION = "check_data_sufficiency-0.1.0"
+TOOL_VERSION = "check_data_sufficiency-1.0.0"
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG_PATH = REPO_ROOT / "configs" / "indicators.yaml"
+SUFFICIENCY_KEYS = (
+    "min_history_weeks",
+    "min_sessions_per_exercise",
+    "min_rpe_coverage",
+    "max_gap_days",
+    "min_matched_exercises",
+)
+SLACK = 1e-9
 
 AnalysisName = Literal["e1rm_trend", "rpe_drift", "weekly_volume", "load_ratio"]
-
-DEFAULT_THRESHOLDS: dict[str, Any] = {
-    "min_history_weeks": 5,
-    "analysis_window_weeks": 6,
-    "min_sessions_per_exercise": 4,
-    "min_rpe_coverage": 0.50,
-    "min_comparable_load_sessions": 4,
-    "comparable_load_tolerance": 0.05,
-    "max_gap_days": 14,
-    "min_matched_exercises": 1,
-}
-
 
 class SetStore(Protocol):
     """Minimal store interface compatible with D4's DuckDB store."""
@@ -59,18 +59,14 @@ class SufficiencyResult(ToolResult):
 
 
 def load_sufficiency_config(path: Path | str | None = None) -> dict[str, Any]:
-    """Load sufficiency thresholds from ``configs/indicators.yaml``."""
-    target = Path(path) if path is not None else DEFAULT_CONFIG_PATH
-    cfg = dict(DEFAULT_THRESHOLDS)
-    if target.exists():
-        with target.open("r", encoding="utf-8") as fh:
-            raw = yaml.safe_load(fh) or {}
-        section = raw.get("sufficiency", raw)
-        if isinstance(section, Mapping):
-            for key in cfg:
-                if key in section:
-                    cfg[key] = section[key]
-    return cfg
+    """Thresholds of spec §6 as one flat dict. A missing key is an error, never a silent default."""
+    cfg = load_indicator_config(Path(path) if path is not None else None)
+    return {
+        **{k: cfg["sufficiency"][k] for k in SUFFICIENCY_KEYS},
+        "analysis_window_weeks": cfg["window"]["analysis_weeks"],
+        "comparable_load_tolerance": cfg["drift"]["load_tolerance"],
+        "min_comparable_load_sessions": cfg["drift"]["min_sessions"],
+    }
 
 
 def _get_field(row: Any, name: str, default: Any = None) -> Any:
@@ -117,13 +113,10 @@ def _max_comparable_load_sessions(
 
     best = 0
     for entries in by_exercise.values():
-        # Reference load = most frequent load (ties broken by highest load)
-        counts = Counter(w for _, w in entries)
-        # Check every candidate reference load (starting with most frequent) so mode is exact
+        # Reference load = most frequent load, compared at 2 decimals (ties broken by highest load)
+        counts = Counter(round(w, 2) for _, w in entries)
         ref_weight = min(counts.items(), key=lambda kv: (-kv[1], -kv[0]))[0]
-        lo = ref_weight * (1.0 - tolerance)
-        hi = ref_weight * (1.0 + tolerance)
-        sessions = {d for d, w in entries if lo <= w <= hi}
+        sessions = {d for d, w in entries if abs(w - ref_weight) <= tolerance * ref_weight + SLACK}
         best = max(best, len(sessions))
     return best
 
@@ -134,8 +127,13 @@ def check_data_sufficiency(
     allowed_exercise_ids: Sequence[str] | None = None,
     *,
     config: Mapping[str, Any] | None = None,
+    ids: ValueIdFactory | None = None,
 ) -> SufficiencyResult:
-    """Evaluate all plan §2.5 sufficiency thresholds for ``log_id``."""
+    """Evaluate all plan §2.5 sufficiency thresholds for ``log_id``.
+
+    ``config`` overrides single thresholds of ``load_sufficiency_config``. Pass the run's ``ids`` so that value ids stay
+    unique across tools.
+    """
     cfg = dict(load_sufficiency_config())
     if config is not None:
         cfg.update(config)
@@ -195,8 +193,9 @@ def check_data_sufficiency(
     all_dates = sorted({_to_date(_get_field(r, "workout_ts")) for r in matched_sets})
     earliest_date = all_dates[0]
     latest_date = all_dates[-1]
-    history_span_days = (latest_date - earliest_date).days
-    window_start = latest_date - timedelta(days=window_days)
+    # Days covered, so a first and last date 34 days apart cover 35 days = 5 weeks (spec §6, check 3)
+    covered_days = (latest_date - earliest_date).days + 1
+    window_start = latest_date - timedelta(days=window_days - 1)  # days 0..41
 
     window_sets = [r for r in matched_sets if _to_date(_get_field(r, "workout_ts")) >= window_start]
     window_dates = sorted({_to_date(_get_field(r, "workout_ts")) for r in window_sets})
@@ -213,12 +212,12 @@ def check_data_sufficiency(
             f"(maximum allowed is {max_gap_days} days); trend and load analyses not assessed"
         )
 
-    # Check 3: History span >= min_history_weeks (35 days)
-    has_sufficient_history = history_span_days >= min_history_days
+    # Check 3: days covered >= min_history_weeks (35 days)
+    has_sufficient_history = covered_days >= min_history_days
     if not has_sufficient_history:
         reasons.append(
-            f"History span is {history_span_days} days ({history_span_days / 7:.1f} weeks; "
-            f"minimum {min_history_weeks} weeks required); load_ratio not assessed"
+            f"History covers {covered_days} days "
+            f"(minimum {min_history_days} days = {min_history_weeks} weeks required); load_ratio not assessed"
         )
 
     # Check 4: Sessions per analyzed exercise in the last 6 weeks >= 4
@@ -243,7 +242,7 @@ def check_data_sufficiency(
     rpe_coverage = (rpe_count / total_window_sets) if total_window_sets > 0 else 0.0
     comparable_sessions = _max_comparable_load_sessions(window_sets, comp_tol)
 
-    rpe_cov_ok = rpe_coverage >= min_rpe_cov
+    rpe_cov_ok = rpe_coverage >= min_rpe_cov - SLACK
     comp_ok = comparable_sessions >= min_comp_sessions
 
     if not rpe_cov_ok:
@@ -272,16 +271,45 @@ def check_data_sufficiency(
     sufficient = len(allowed_analyses) > 0
     partial_abstention = sufficient and len(reasons) > 0
 
+    ids = ids or ValueIdFactory()
+    digest = config_hash(cfg)
+
+    def count(name: str, number: int, unit: str, formula: str, rows_used: Sequence[Any]) -> Value:
+        return Value(
+            value_id=ids.new(name),
+            name=name,
+            value=number,
+            unit=unit,
+            provenance=Provenance(
+                formula=formula,
+                input_row_ids=[str(_get_field(r, "set_id")) for r in rows_used],
+                tool_version=TOOL_VERSION,
+                config_hash=digest,
+            ),
+        )
+
+    values = [
+        count("history_days_covered", covered_days, "days", "(last date - first date) + 1", matched_sets),
+        count("largest_gap_days", largest_gap, "days", "max days between consecutive dates in the window", window_sets),
+        count("window_working_sets", total_window_sets, "sets", "count of matched working sets in the window", window_sets),
+        count("rpe_logged_sets", rpe_count, "sets", "count of those sets with RPE", window_sets),
+        count(
+            "comparable_load_sessions", comparable_sessions, "sessions",
+            "max over exercises of sessions with RPE at comparable load", window_sets,
+        ),
+    ]  # fmt: skip
+
     return SufficiencyResult(
+        values=values,
         sufficient=sufficient,
         partial_abstention=partial_abstention,
         reasons=reasons,
         allowed_analyses=allowed_analyses,
-        eligible_exercise_ids=eligible_for_trend if eligible_for_trend else matched_exercise_ids,
+        eligible_exercise_ids=eligible_for_trend,
         summary={
             "working_sets": len(working_sets),
             "matched_exercises": len(matched_exercise_ids),
-            "history_span_days": history_span_days,
+            "history_days_covered": covered_days,
             "largest_gap_days": largest_gap,
             "rpe_logged_sets": rpe_count,
             "window_working_sets": total_window_sets,

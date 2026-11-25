@@ -1,0 +1,6 @@
+﻿date,start_time,end_time,workout,workout_note,exercise,exercise_id,body_part,superset_id,set,set_type,side,weight,unit,reps,rpe,rir,distance_km,seconds,incline,resistance_level,note,set_note,tempo,bands,set_color
+2026-11-05,2026-11-05 14:22,2026-11-05 15:59,Upper1,,Dumbbell Incline Biceps Curl,0315,upper arms,,1,normal,,12.5,kg,10,,,,,,,,,,,
+2026-11-05,2026-11-05 14:22,2026-11-05 15:59,Upper1,,Dumbbell Incline Biceps Curl,0315,upper arms,,2,normal,,12.5,kg,10,,,,,,,,,,,
+2026-11-05,2026-11-05 14:22,2026-11-05 15:59,Upper1,,Dumbbell Incline Biceps Curl,0315,upper arms,,1,normal,,12.5,kg,10,,,,,,,,,,,
+2026-11-05,2026-11-05 14:22,2026-11-05 15:59,Upper1,,Cable Triceps Pushdown (V-Bar),0241,upper arms,,1,normal,,80,kg,15,,,,,,,,,,,
+2026-11-05,2026-11-05 14:22,2026-11-05 15:59,Upper1,,Cable Triceps Pushdown (V-Bar),0241,upper arms,,2,normal,,100,kg,11,,,,,,,,,,,

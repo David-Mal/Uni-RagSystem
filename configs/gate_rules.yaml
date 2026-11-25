@@ -1,0 +1,68 @@
+# Deterministic safety rules (issue D9, plan §5.3). Tuned for HIGH RECALL: a false red costs precision, a missed red
+# costs safety. Tuned on training-side and dev phrases only, never on golden data.
+#
+# How it works: the text is lowercased, then every figurative and negated phrase is cut out and replaced by a
+# sentence break, then the symptom patterns are searched in what is left. Patterns are Python regexes, matched
+# anywhere. Macros in <...> are expanded first. <gap> is up to six words inside the same sentence.
+
+macros:
+  gap: '(?:[^\w.!?;]+[\w''-]+){0,6}?[^\w.!?;]+'
+  gap2: '(?:[^\w.!?;]+[\w''-]+){0,3}?[^\w.!?;]+'
+  severe: '(?:sharp|stabbing|shooting|piercing|searing|severe|intense|excruciating|unbearable|terrible|horrible|awful)(?:ly)?'
+  pain: '(?:pain(?:s|ed|ful|fully)?|hurt(?:s|ing)?|ach(?:e|es|ed|ing|y))'
+  pop: '(?:pop(?:s|ped|ping)?|snap(?:s|ped|ping)?|crack(?:s|ed|ing)?)'
+  joint: '(?:knee|elbow|shoulder|wrist|hip|ankle|neck|lower back|joint)s?'
+  # Words that can be negated explicitly ("no knee pain", "without swelling")
+  qualifier: '(?:sharp|stabbing|shooting|severe|intense|chest|knee|shoulder|back|elbow|wrist|hip|neck|joint|leg|arm|ankle|muscle|real|actual|more|major|residual)'
+  noun: '(?:pains?|aches?|discomfort|stiffness|soreness|tightness|swelling|dizziness|numbness|tingling|twinges?)'
+  # A negation that only holds for a while is not a negation ("no pain until the last set")
+  holds: '(?!<gap2>(?:until|till|before|except|besides|apart|initially|unless)\b)(?! (?:at first|at the start|relief|killers?|meds?|medication)\b)'
+
+red:
+  severe_pain: '\b<severe>\b<gap><pain>\b'
+  pain_severe: '\b<pain>\b<gap><severe>\b'
+  really_hurts: '\b(?:really|badly) (?:hurt(?:s|ing)?|painful)\b'
+  hurts_badly: '\b(?:hurt(?:s|ing)?|pain(?:ful)?)\b<gap>(?:bad|badly|so bad|a lot|like hell|crazy)\b'
+  stabbing: '\bstabb(?:ing|ed)\b|\bshooting (?:down|up|through)\b'
+  swelling: '\bsw(?:ell(?:ing|ed|s)?|ollen)\b'
+  dizziness: '\bdizz(?:y|iness)\b|\blight[- ]?head(?:ed|edness)\b|\b(?:room|head|everything)\b<gap2>spin(?:s|ning)\b|\bvision\b<gap2>(?:dark|black|blurry|blurred)\b'
+  fainting: '\bfaint(?:ed|ing|ness)?\b|\b(?:pass(?:ed|ing)|black(?:ed|ing)) out\b'
+  chest: '\bchest\b<gap><pain>\b|\b<pain>\b<gap>chest\b|\bchest\b<gap>(?:tight(?:ness|ened|ening)?|pressure|discomfort)\b|\b(?:tight(?:ness)?|pressure|discomfort)\b<gap>chest\b|\btight chest\b'
+  numbness: '\bnumb(?:ness|ed)?\b'
+  tingling: '\btingl(?:e|es|ed|ing|y)\b|\bpins and needles\b'
+  radiating: '\b<pain>\b<gap>radiat(?:e|es|ed|ing)\b|\bradiat(?:e|es|ed|ing)\b<gap><pain>\b'
+  pop_then_pain: '\b<pop>\b(?:[^\w]+[\w''-]+){0,12}?[^\w]+<pain>\b'
+  pain_then_pop: '\b<pain>\b(?:[^\w]+[\w''-]+){0,12}?[^\w]+<pop>\b'
+
+yellow:
+  pain: '\b<pain>\b'
+  discomfort: '\bdiscomforts?\b|\buncomfortabl[ey]\b'
+  stiffness: '\bstiff(?:ness|er)?\b'
+  tightness: '\btight(?:ness|er)?\b'
+  # Ordinary muscle soreness is green; soreness that persists or sits in a joint is not.
+  persistent_soreness: '\bsore(?:ness)?\b<gap>(?:since|days|weeks?|again|persist\w*|lingering|won''t|not going|doesn''t)\b|\b(?:still|persistent\w*|lingering|always|constantly|days of)\b(?:<gap2>)sore(?:ness)?\b'
+  joint_soreness: '\b<joint>\b(?: (?:is|are|was|were|feels?|felt|got|a|bit|little|mildly|slightly|kinda|so|very)){0,4} sore\b|\bsore <joint>\b'
+  tenderness: '\btender(?:ness)?\b'
+  twinge: '\btwing(?:e|es|ed)\b|\btweak(?:ed|y)\b|\bniggl(?:e|es|ing)\b'
+  injury: '\binjur(?:y|ed|ies)\b|\bstrained\b|\bsprain(?:ed)?\b'
+
+# The only negations that are recognized.
+negation:
+  no_noun: '\b(?:no|zero|without(?: any)?|not a (?:hint|trace|bit|sign) of)\s+(?:<qualifier>\s+)?<noun>\b(?:(?:\s*,\s*(?:no\s+)?<noun>\b)*\s*,?\s+(?:or|nor)\s+(?:<qualifier>\s+)?<noun>\b)?<holds>'
+  pain_free: '(?<!not )(?<!n''t )(?<!never )\b(?:pain|symptom)[- ]free\b<holds>'
+  did_not_hurt: '\b(?:did|does|do|was|is)(?:n''t| not)\s+(?:hurt(?:ing)?|painful)\b<holds>'
+  nothing_hurts: '\bnothing (?:is |was )?hurt(?:s|ing)?\b<holds>'
+
+# Gym talk that must not trigger.
+figurative:
+  - '\bdying\b'
+  - '\b(?:killed|killing|destroyed|wrecked|murdered|crushed) (?:me|my \w+)\b'
+  - '\bdead (?:legs?|arms?|tired)\b'
+  - '\b(?:legs?|arms?|quads?|back) (?:is|are|was|were|felt) dead\b'
+  - '\bno pain,? no gain\b'
+  - '\bpain cave\b'
+  - '\bpainfully (?:slow|long|boring|easy|crowded|busy|early)\b'
+  - '\bhurts? so good\b'
+  - '\b(?:ego|pride|feelings|wallet) (?:hurts?|aches?)\b'
+  - '\b(?:stay(?:ed|ing)?|kept|keep|keeping|brac(?:e|ed|ing)|squeez(?:e|ed|ing)) (?:it |everything |my \w+ |the \w+ |nice and |super |really )?tight\b'
+  - '\btight (?:form|technique|schedule|rest|rests|grip|lockout|arch|setup|core|budget)\b'

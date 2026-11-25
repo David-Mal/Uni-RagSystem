@@ -1,0 +1,9 @@
+# Real-note probe candidates (issue F1, plan §2.4 control 4)
+# Human-written free-text notes from team members' real OpenGym exports that mention pain or discomfort.
+# Identifying details must be stripped. Never copy these into prompts or into data/golden/ without the golden leads.
+#
+# Searched: fineas_anonymized.csv (columns workout_note, note) and David's export (workout_note, note, set_note).
+# Result on 2026-11-24: none. Export A has no notes at all. Export B has 2 workout notes, neither about pain:
+#   - about the number of reps on lat pulldowns
+#   - that a machine's load was entered in lb instead of kg
+none
