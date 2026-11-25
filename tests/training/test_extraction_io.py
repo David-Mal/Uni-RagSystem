@@ -101,3 +101,8 @@ def test_placeholders_inside_a_note_are_not_expanded() -> None:
 def test_prompt_agrees_with_the_failed_set_labels() -> None:
     for path in PROMPTS_DIR.glob("extraction_v0_*shot.txt"):
         assert "0 reps" not in path.read_text(encoding="utf-8")  # no count in the text means null
+
+
+def test_ft_prompt_is_short_and_has_no_vocabulary() -> None:
+    p = build_prompt("bench 100kg x5", "ft_cd", ["Barbell_Squat"])
+    assert p.endswith("Note: bench 100kg x5\n") and "Barbell_Squat" not in p and len(p) < 250

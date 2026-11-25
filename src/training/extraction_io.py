@@ -17,7 +17,11 @@ from src.datagen import vocab
 from src.schemas import EXERCISE_IDS_CONTEXT_KEY, UNKNOWN_EXERCISE_ID, ExtractionResult
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
-PROMPT_FILES = {"zero_shot": "extraction_v0_zeroshot.txt", "few_shot": "extraction_v0_fewshot.txt"}
+PROMPT_FILES = {
+    "zero_shot": "extraction_v0_zeroshot.txt",
+    "few_shot": "extraction_v0_fewshot.txt",
+    "ft": "extraction_v0_ft.txt",
+}
 FEWSHOT_PER_CLASS = 2
 """Few-shot uses 2 training-pool examples per triage class (6 total), picked deterministically."""
 
@@ -47,11 +51,16 @@ def pick_fewshot(train_items: Sequence[dict[str, Any]], per_class: int = FEWSHOT
     return picked
 
 
+def prompt_kind(setup: str) -> str:
+    """Template used by a setup: ``few_shot*`` -> few_shot, ``ft*`` -> ft (short fine-tuning prompt), else zero_shot."""
+    if setup.startswith("few_shot"):
+        return "few_shot"
+    return "ft" if setup.startswith("ft") else "zero_shot"
+
+
 def build_prompt(text: str, setup: str, exercise_ids: Iterable[str], examples: Sequence[dict[str, Any]] = ()) -> str:
-    """Fill the prompt template for ``setup`` (``zero_shot``/``few_shot``; CD variants reuse the zero-shot prompt)."""
-    template = (PROMPTS_DIR / PROMPT_FILES["few_shot" if setup.startswith("few_shot") else "zero_shot"]).read_text(
-        encoding="utf-8"
-    )
+    """Fill the prompt template for ``setup``. CD variants reuse the prompt of their base setup."""
+    template = (PROMPTS_DIR / PROMPT_FILES[prompt_kind(setup)]).read_text(encoding="utf-8")
     shots = "".join(f"Note: {ex['text']}\nJSON: {label_json(ex['labels'])}\n\n" for ex in examples)
     parts = {"exercise_ids": ", ".join(exercise_ids), "examples": shots, "text": text}
     # One pass, so a note that contains "{text}" or "{examples}" is not expanded again.

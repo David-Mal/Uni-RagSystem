@@ -1,0 +1,2 @@
+Extract the fields of this strength-training note as strict JSON (exercise_id, kinematic_observation, load, reps, outcome, rpe, triage_level).
+Note: {text}
