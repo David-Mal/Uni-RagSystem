@@ -8,7 +8,7 @@ from typing import Sequence
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from src.sim.quotas import QuotaRequirements
+from src.sim.quotas import QuotaRequirements  # noqa: E402
 
 
 def missing_dependencies(root: Path) -> tuple[str, ...]:
