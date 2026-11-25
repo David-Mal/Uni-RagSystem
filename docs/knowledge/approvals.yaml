@@ -1,0 +1,5 @@
+# Synthesis documents that may be retrieved and cited (plan §4.1: a human verifies every citation, a non-author reviews).
+# The index build skips every document that is not listed here, so a draft on main is never cited.
+# Add an entry only after both checks, for example:
+#   syn01: {verified_by: <author>, verified_on: YYYY-MM-DD, reviewed_by: <other member>, reviewed_on: YYYY-MM-DD}
+approved: {}

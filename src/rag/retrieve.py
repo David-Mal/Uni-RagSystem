@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from src.rag.bm25 import BM25Index
 from src.rag.store import ChromaVectorStore, ScoredChunk
+from src.tools.match_exercise import Candidate
 
 RetrievalMode = Literal["hybrid", "dense", "bm25"]
 
@@ -74,3 +75,27 @@ class HybridRetriever:
             bm25_hits = self.bm25_index.query(query, k=fetch_k, where=where)
             return reciprocal_rank_fusion([dense_hits, bm25_hits], rrf_k=self.rrf_k, top_k=k)
         raise ValueError(f"Unsupported retrieval mode: {mode!r}")
+
+
+class ExerciseRetriever:
+    """Stage 3 of ``match_exercise_rag`` (its ``Retriever`` protocol) on top of the hybrid index.
+
+    Order comes from the fused ranking. The score is the cosine similarity, because an RRF score (at most 2/61) says
+    nothing about confidence. ``retrieval_threshold`` in ``configs/matching.yaml`` applies to it and is still to be tuned
+    on dev for the chosen embedder.
+    """
+
+    def __init__(self, retriever: HybridRetriever) -> None:
+        self._retriever = retriever
+
+    def retrieve(self, query: str, k: int = 5) -> list[Candidate]:
+        """Return exercise candidates, best first."""
+        where = {"corpus": "exercises"}
+        similarity = {
+            h.chunk_id: h.score
+            for h in self._retriever.vector_store.query(query, k=max(3 * k, 20), where=where)
+        }
+        return [
+            Candidate(exercise_id=h.chunk_id, score=similarity.get(h.chunk_id, 0.0), name=h.metadata.get("name"))
+            for h in self._retriever.retrieve(query, k=k, where=where)
+        ]

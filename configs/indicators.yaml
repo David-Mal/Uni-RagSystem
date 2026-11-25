@@ -1,0 +1,48 @@
+# Thresholds for docs/indicator-spec.md. Tuned on the dev set only; frozen before the golden logs freeze.
+
+rounding:
+  summary_decimals: 2
+
+window:
+  analysis_weeks: 6
+
+e1rm:
+  max_reps: 10
+  min_sessions: 4
+  flat_pct_per_week: 0.5
+
+drift:
+  load_tolerance: 0.05
+  min_sessions: 4
+  flat_per_week: 0.1
+
+weekly_sets:
+  default_weeks: 6
+  min_effective_rpe: 7.0
+  week_start: monday
+  primary_muscle_weight: 1.0
+  secondary_muscle_weight: 0.5
+  trend_flat_band: 0.5
+
+load:
+  acute_days: 7
+  chronic_days: 28
+  rpe_divisor: 10.0
+
+# The analysis window, the load tolerance and the drift session minimum are shared with window and drift above.
+sufficiency:
+  min_history_weeks: 5
+  min_sessions_per_exercise: 4
+  min_rpe_coverage: 0.5
+  max_gap_days: 14
+  min_matched_exercises: 1
+
+verifier:
+  load_abs: 0.5
+  load_rel: 0.01
+  slope_abs: 0.01
+  ratio_abs: 0.01
+  load_units: [kg, kg_rpe_weighted]
+  load_names: [chronic_load_weekly]
+  ratio_names: [acute_chronic_ratio, relative_strength]
+  slope_suffix: _slope

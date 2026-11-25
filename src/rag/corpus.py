@@ -33,6 +33,8 @@ DEFAULT_ALLOWED_TAGS: frozenset[str] = frozenset(
     }
 )
 
+APPROVALS_FILE = "approvals.yaml"
+
 NON_SYNTHESIS_FILES: frozenset[str] = frozenset({"SOURCES.md", "TAGS.md", "TEMPLATE.md"})
 
 ChunkingMode = Literal["heading", "fixed_256", "fixed_512", "sentence_window"]
@@ -69,6 +71,19 @@ def load_allowed_tags(synthesis_dir: Path | str | None = None) -> frozenset[str]
     content = tags_file.read_text(encoding="utf-8")
     parsed = set(re.findall(r"^\s*-\s+`([a-z0-9_]+)`\s*$", content, re.MULTILINE))
     return frozenset(parsed) if parsed else DEFAULT_ALLOWED_TAGS
+
+
+def load_approved_doc_ids(synthesis_dir: Path | str | None = None) -> frozenset[str]:
+    """Documents that may be retrieved, from ``approvals.yaml``. No file means nothing is approved."""
+    base = Path(synthesis_dir) if synthesis_dir is not None else DEFAULT_SYNTHESIS_DIR
+    path = base / APPROVALS_FILE
+    if not path.exists():
+        return frozenset()
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    approved = raw.get("approved") or {}
+    if not isinstance(approved, dict):
+        raise TypeError(f"{path}: 'approved' must map doc ids to their verification record")
+    return frozenset(str(k) for k in approved)
 
 
 def _load_aliases_by_id(aliases_path: Path | str | None = None) -> dict[str, list[str]]:
@@ -234,13 +249,20 @@ def load_synthesis_chunks(
     allowed_tags: frozenset[str] | None = None,
     max_tokens: int = 450,
     overlap: int = 50,
+    include_drafts: bool = False,
 ) -> list[Chunk]:
-    """Load and chunk Markdown synthesis documents, failing if any chunk lacks an allowed tag."""
+    """Load and chunk Markdown synthesis documents, failing if any chunk lacks an allowed tag.
+
+    Every document is validated, but only documents listed in ``approvals.yaml`` give chunks, unless
+    ``include_drafts`` is set (retrieval experiments only). ``max_tokens`` counts whitespace-separated words.
+    """
     base = Path(synthesis_dir) if synthesis_dir is not None else DEFAULT_SYNTHESIS_DIR
     if not base.exists():
         return []
 
     valid_tags = allowed_tags if allowed_tags is not None else load_allowed_tags(base)
+    approved = load_approved_doc_ids(base)
+    seen_doc_ids: set[str] = set()
     md_files = sorted(
         p for p in base.glob("*.md") if p.name not in NON_SYNTHESIS_FILES and p.is_file()
     )
@@ -266,6 +288,12 @@ def load_synthesis_chunks(
             raise ValueError(
                 f"Synthesis doc {doc_id!r} ({path.name}) contains disallowed topic_tags: {invalid}"
             )
+
+        if doc_id in seen_doc_ids:
+            raise ValueError(f"Duplicate doc_id {doc_id!r} ({path.name})")
+        seen_doc_ids.add(doc_id)
+        if not include_drafts and doc_id not in approved:
+            continue
 
         if chunking == "heading":
             raw_chunks = _chunk_by_heading(body, body_offset, max_tokens=max_tokens, overlap=overlap)
