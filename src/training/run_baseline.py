@@ -31,7 +31,7 @@ SETUPS = ("zero_shot", "few_shot", "zero_shot_cd", "few_shot_cd", "ft", "ft_cd")
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()  # same on every OS
 
 
 def _git_commit() -> str | None:

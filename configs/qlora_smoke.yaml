@@ -1,7 +1,7 @@
 # QLoRA smoke run (issue F6, plan §6.3, §6.6). Reproducible from this file:
 #   python -m src.training.train_qlora --config configs/qlora_smoke.yaml
 base_model: Qwen/Qwen3-1.7B
-train_file: data/training/train.jsonl     # first cut: the first n_train items (train_v1)
+train_file: data/training/train.jsonl     # class-balanced seeded subset of n_train items
 n_train: 500
 output_dir: results/E3/smoke
 seed: 13

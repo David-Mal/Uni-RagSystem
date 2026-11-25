@@ -5,10 +5,9 @@ seed, persona or phrasing family outside the requested pool, and it always refus
 by construction: the slots are sampled first, then the text is rendered from them, and ``ExtractionResult``
 validates the labels.
 
-CLI (until P1 merges, point ``--manifest`` at a manifest with the same shape, e.g. the test stub)::
+CLI::
 
-    python -m src.datagen.messages --manifest data/manifests/partition.yaml --pool train \
-        --per-class 100 --base-seed 1 --out data/training/sample.jsonl
+    python -m src.datagen.messages --pool train --per-class 100 --base-seed 1 --out data/training/sample.jsonl
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import tempfile
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
@@ -26,7 +26,7 @@ from typing import Any, Protocol
 
 from src.datagen import vocab
 from src.datagen.families import FAMILIES, PhrasingFamily, Slots
-from src.datagen.registry import PoolError, PoolRegistry
+from src.datagen.partition import DEFAULT_PATH, Partition, PoolError, load_partition
 from src.schemas import (
     SCHEMA_VERSION,
     UNKNOWN_EXERCISE_ID,
@@ -41,6 +41,7 @@ GENERATOR_NAME = "template"
 GENERATOR_VERSION = "v0"
 GENERATOR = f"{GENERATOR_NAME}-{GENERATOR_VERSION}"
 ALLOWED_POOLS = ("train", "dev")
+CONSUMERS = ("extractor", "classifier")
 
 # Sampling probabilities (documented in docs/datagen-messages.md)
 P_UNKNOWN_EXERCISE = 0.10  # half unresolvable phrase, half no exercise mentioned
@@ -51,8 +52,7 @@ P_RPE = 0.45
 P_OUTCOME = {Outcome.COMPLETED: 0.80, Outcome.PARTIAL: 0.10, Outcome.FAILED: 0.10}
 P_KINEMATIC_NONE = 0.55
 P_RED_SYSTEMIC = 0.30
-P_RED_DISTRACTOR = 0.15  # red items whose real red symptom follows a negated or figurative clause
-P_HARD_NEGATIVE = {TriageLevel.GREEN: 0.25, TriageLevel.YELLOW: 0.15, TriageLevel.RED: 0.0}
+P_HARD_NEGATIVE = {TriageLevel.GREEN: 0.25, TriageLevel.YELLOW: 0.15, TriageLevel.RED: 0.15}
 GENERIC_BODY_PARTS = ("knee", "shoulder", "lower back", "elbow", "hip", "wrist")
 
 
@@ -93,11 +93,12 @@ def _weighted(rng: random.Random, weights: Mapping[Any, float]) -> Any:
     return rng.choices(keys, weights=[weights[k] for k in keys], k=1)[0]
 
 
-def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool) -> list[PhrasingFamily]:
-    """Families of this module that the manifest puts in ``pool``. Never returns a golden-pool family."""
+def _families_for(pool: str, registry: Partition, hard_negative: bool, consumer: str) -> list[PhrasingFamily]:
+    """Families of ``consumer`` (here and in the manifest) that are in ``pool``. Never returns a golden-pool family."""
+    consumers = {f.id: f.consumer for entries in registry.phrasing_families.values() for f in entries}
     out = []
     for fam in FAMILIES.values():
-        if (fam.hard_negative is not None) != hard_negative:
+        if fam.consumer != consumer or (fam.hard_negative is not None) != hard_negative:
             continue
         try:
             actual = registry.pool_of("phrasing_families", fam.family_id)
@@ -105,7 +106,7 @@ def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool) -> lis
             continue
         if actual == "golden":
             raise PoolError(f"phrasing family {fam.family_id!r} is in the golden pool; generator refuses")
-        if actual == pool:
+        if actual == pool and consumers[fam.family_id] == consumer:
             out.append(fam)
     return out
 
@@ -137,30 +138,73 @@ def _symptom(
             return pick(clauses.figurative)
         if kind == "negated":
             return pick(clauses.negated)
+        if kind == "soreness":
+            return pick(clauses.soreness_ok)
+        if kind == "past_pain":
+            return pick(clauses.past_pain_resolved)
         return pick(clauses.green_positive) if allow_positive else ""
     if level is TriageLevel.YELLOW:
         if kind == "negated":
             return pick(clauses.negated_red_plus_mild)
         if kind == "figurative":
             return f"{pick(clauses.figurative)}, and {pick(clauses.yellow)}"
+        if kind == "soreness":
+            return f"{pick(clauses.soreness_ok)}, but also {pick(clauses.yellow)}"
+        if kind == "past_pain":
+            return f"{pick(clauses.past_pain_resolved)}, but now {pick(clauses.yellow)}"
         return pick(clauses.yellow)
     red = pick(clauses.red_systemic) if rng.random() < P_RED_SYSTEMIC else pick(clauses.red)
-    if rng.random() < P_RED_DISTRACTOR:
+    # In a hard-negative style a negated or figurative clause comes first, so neither it nor the style means "not red".
+    if kind == "figurative":
+        return f"{pick(clauses.figurative)}, but {red}"
+    if kind == "negated":
         return f"{pick(clauses.red_distractor)}, but {red}"
+    if kind == "soreness":
+        return f"{pick(clauses.soreness_ok)}, but {red}"
+    if kind == "past_pain":
+        return f"{pick(clauses.past_pain_resolved)}, but now {red}"
     return red
 
 
+_COMPLETED_REPS = re.compile(r"\b(?:final|last|reps?|couple|end)\b")
+
+
+def _kinematic_options(
+    kin: KinematicObservation, clauses: vocab.ClauseVocab, outcome: Outcome
+) -> tuple[str, ...]:
+    """Phrases usable with ``outcome``: a failed set has no completed rep, so "on the final reps" contradicts it."""
+    phrases = clauses.kinematic[kin]
+    if outcome is not Outcome.FAILED:
+        return phrases
+    if kin is KinematicObservation.GRINDING_REP:  # a grind implies that the rep went up
+        return ()
+    return tuple(p for p in phrases if not _COMPLETED_REPS.search(p))
+
+
 def generate_item(
-    level: TriageLevel, seed: int, pool: str, registry: PoolRegistry, paraphraser: Paraphraser | None = None
+    level: TriageLevel,
+    seed: int,
+    pool: str,
+    registry: Partition,
+    paraphraser: Paraphraser | None = None,
+    consumer: str = "extractor",
 ) -> dict[str, Any]:
-    """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation."""
+    """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation.
+
+    ``consumer`` selects the family set, as in the P1 manifest: ``extractor`` (default) or ``classifier`` (F8).
+    """
     if pool not in ALLOWED_POOLS:
         raise PoolError(f"generator only writes pools {ALLOWED_POOLS}, got {pool!r}")
+    if consumer not in CONSUMERS:
+        raise ValueError(f"consumer must be one of {CONSUMERS}, got {consumer!r}")
     registry.assert_in_pool(pool, seed=seed)
-    rng = random.Random(f"{GENERATOR}|{seed}|{level.value}")
+    key = f"{GENERATOR}|{seed}|{level.value}"
+    if consumer != "extractor":  # the extractor stream stays unchanged so its pinned items hold
+        key = f"{GENERATOR}|{consumer}|{seed}|{level.value}"
+    rng = random.Random(key)
 
     hard_negative = rng.random() < P_HARD_NEGATIVE[level]
-    families = _families_for(pool, registry, hard_negative)
+    families = _families_for(pool, registry, hard_negative, consumer)
     if not families:
         kind = "hard-negative" if hard_negative else "regular"
         raise PoolError(f"no {kind} phrasing family of this generator is in the {pool!r} pool of the manifest")
@@ -210,11 +254,14 @@ def generate_item(
     if rng.random() < P_KINEMATIC_NONE:
         kin = KinematicObservation.NONE
     else:
-        options = [k for k in KinematicObservation if k is not KinematicObservation.NONE]
-        if outcome is Outcome.FAILED:  # a grind implies the rep went up, which contradicts a failed attempt
-            options.remove(KinematicObservation.GRINDING_REP)
-        kin = rng.choice(options)
-    kin_phrase = rng.choice(clauses.kinematic[kin])
+        kin = rng.choice(
+            [
+                k
+                for k in KinematicObservation
+                if k is not KinematicObservation.NONE and _kinematic_options(k, clauses, outcome)
+            ]
+        )
+    kin_phrase = rng.choice(_kinematic_options(kin, clauses, outcome))
     part = rng.choice(vocab.SIDES) + rng.choice(ex.body_parts if ex else GENERIC_BODY_PARTS)
     reps_word = vocab.NUMBER_WORDS.get(reps) if outcome is Outcome.COMPLETED and reps else None
     allow_positive = outcome is Outcome.COMPLETED and kin is KinematicObservation.NONE
@@ -230,6 +277,8 @@ def generate_item(
         kinematic=kin_phrase,
         symptom=symptom,
         extra="",
+        level=level.value,
+        part=part,
     )
     text = family.render(slots, rng).strip()
     paraphraser_name = None
@@ -264,7 +313,7 @@ def generate_item(
 
 
 def generate(
-    config: GeneratorConfig, registry: PoolRegistry, paraphraser: Paraphraser | None = None
+    config: GeneratorConfig, registry: Partition, paraphraser: Paraphraser | None = None
 ) -> Iterator[dict[str, Any]]:
     """Yield ``per_class[level]`` items per level with consecutive seeds starting at ``base_seed``."""
     seed = config.base_seed
@@ -300,14 +349,14 @@ def write_jsonl(items: Iterator[dict[str, Any]] | list[dict[str, Any]], out: Pat
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="Generate synthetic training/dev messages (template-v0).")
-    parser.add_argument("--manifest", type=Path, required=True, help="partition manifest YAML (P1)")
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_PATH, help="partition manifest YAML (P1)")
     parser.add_argument("--pool", choices=ALLOWED_POOLS, default="train")
     parser.add_argument("--per-class", type=int, default=100)
     parser.add_argument("--base-seed", type=int, help="first seed (default: start of the pool's seed range)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    registry = PoolRegistry.load(args.manifest)
+    registry = load_partition(args.manifest)
     base = args.base_seed if args.base_seed is not None else registry.seed_range(args.pool)[0]
     config = GeneratorConfig(
         pool=args.pool, per_class=dict.fromkeys(vocab.TRIAGE_ORDER, args.per_class), base_seed=base

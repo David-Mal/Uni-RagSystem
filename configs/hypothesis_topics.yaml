@@ -1,0 +1,9 @@
+# Which knowledge topic tags (docs/knowledge/TAGS.md) may be cited for each hypothesis (plan §5.4, §5.6).
+# Same mapping as retrieve_knowledge (M6); the verifier checks citations against it independently.
+insufficient_weekly_volume: [volume]
+fatigue_accumulation: [rpe, fatigue_load]
+stagnant_load_progression: [progression, intensity]
+load_spike: [load_monitoring, fatigue_load]
+inconsistent_frequency: [frequency]
+logging_quality_issue: [logging]
+confounder_present: [confounders]

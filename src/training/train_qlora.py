@@ -18,6 +18,7 @@ import csv
 import hashlib
 import json
 import platform
+import random
 import subprocess
 import time
 from pathlib import Path
@@ -33,14 +34,32 @@ def ft_prompt(text: str) -> str:
     return build_prompt(text, "ft", [])
 
 
-def read_train(path: Path, n: int | None) -> list[dict[str, Any]]:
-    """First ``n`` items of the training file (the "first cut"); refuses golden and non-train items."""
+def read_train(
+    path: Path, n: int | None, seed: int = 0, *, allow_unaudited: bool = False
+) -> list[dict[str, Any]]:
+    """Seeded, class-balanced subset of ``n`` items (all items if ``n`` is ``None``), in shuffled order.
+
+    The training file is sorted by class, so its first 500 items are all green. Refuses golden and non-train items, and
+    data that has not been through the leakage audit (P4) unless ``allow_unaudited``.
+    """
     if "golden" in {p.lower() for p in path.resolve().parts}:
         raise ValueError("refusing to train on golden data")
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    rows = rows[:n] if n else rows
     if any(r.get("pool") != "train" for r in rows):
         raise ValueError("training items must come from the train pool")
+    if not allow_unaudited and any("unaudited" in r.get("data_version", "") for r in rows):
+        raise ValueError("this data has not been through the leakage audit (P4); rebuild it as train_v1 first")
+    rng = random.Random(seed)
+    if n is not None and n < len(rows):
+        by_level: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            by_level.setdefault(r["labels"]["triage_level"], []).append(r)
+        levels = sorted(by_level)
+        rows = []
+        for i, level in enumerate(levels):
+            share = n // len(levels) + (1 if i < n % len(levels) else 0)
+            rows += rng.sample(by_level[level], min(share, len(by_level[level])))
+    rng.shuffle(rows)
     return rows
 
 
@@ -50,7 +69,7 @@ def to_examples(rows: list[dict[str, Any]], chat: Any, eos: str) -> list[dict[st
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()  # same on every OS
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the ml group, a GPU and a model download
@@ -59,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--train-file", help="override train_file")
     parser.add_argument("--output-dir", help="override output_dir")
+    parser.add_argument("--allow-unaudited", action="store_true", help="pipeline check on data before the leakage audit")
     args = parser.parse_args(argv)
 
     import bitsandbytes
@@ -96,7 +116,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
         torch_dtype=cdtype,
         device_map="auto",
     )
-    rows = read_train(Path(cfg["train_file"]), cfg.get("n_train"))
+    rows = read_train(
+        Path(cfg["train_file"]), cfg.get("n_train"), cfg["seed"], allow_unaudited=args.allow_unaudited
+    )
     ds = datasets.Dataset.from_list(to_examples(rows, lambda p: chat_prompt(tok, p), tok.eos_token))
 
     half = cdtype == torch.float16
@@ -167,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the 
         "train_file": cfg["train_file"],
         "train_file_sha256": _sha256(Path(cfg["train_file"])),
         "n_train": len(rows),
+        "train_item_ids_sha256": hashlib.sha256("\n".join(r["item_id"] for r in rows).encode()).hexdigest(),
+        "class_counts": {c: sum(r["labels"]["triage_level"] == c for r in rows) for c in ("green", "yellow", "red")},
+        "unaudited_data": args.allow_unaudited,
         "train_loss": result.training_loss,
         "first_logged_loss": log[0]["loss"] if log else None,
         "last_logged_loss": log[-1]["loss"] if log else None,
