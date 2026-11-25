@@ -1,0 +1,27 @@
+{
+  "$comment": "schema_version=v0",
+  "additionalProperties": false,
+  "description": "A load as reported by the user, in the user's unit (conversion to kg happens in ingest).",
+  "properties": {
+    "unit": {
+      "enum": [
+        "kg",
+        "lb"
+      ],
+      "title": "Unit",
+      "type": "string"
+    },
+    "value": {
+      "description": "Load magnitude; 0 is allowed for bodyweight-only sets. Ints are accepted (80 -> 80.0).",
+      "minimum": 0,
+      "title": "Value",
+      "type": "number"
+    }
+  },
+  "required": [
+    "value",
+    "unit"
+  ],
+  "title": "Load",
+  "type": "object"
+}

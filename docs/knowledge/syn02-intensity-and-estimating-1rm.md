@@ -34,8 +34,8 @@ The plan limits eligible repetition counts to at most 10. This is the project's
 stated operating range, not a universal validity guarantee for every population.
 Warm-up and failed sets must not contribute to e1RM. The RPE-adjusted variant
 described in the plan substitutes `reps + (10 - RPE)` as repetitions to failure.
-Whether the repetition limit applies before or after that adjustment remains
-[TO VERIFY]; this synthesis does not select an implementation.
+The repetition limit applies to both the logged and the adjusted count, see
+[indicator specification, section 2](../indicator-spec.md).
 
 The study's repetitions-to-failure test is a specific research protocol, not
 validation of every logged working set. Its equation table and references provide

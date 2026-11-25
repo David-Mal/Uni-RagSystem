@@ -1,0 +1,2 @@
+# Keep real exports byte-exact (UTF-8 BOM + CRLF) on every OS so adapters are tested against the real format.
+*.csv -text

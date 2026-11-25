@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,8 @@ def test_source_md_present_and_complete() -> None:
     content = source_md.read_text(encoding="utf-8")
     assert "yuhonas/free-exercise-db" in content
     assert "Unlicense" in content
-    assert "f00c92c7dcf1216a928a52c7ce8e2f71ed5" in content
+    assert "`f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5`" in content
+    assert re.search(r"`[0-9a-f]{40}`", content)
 
 
 def test_loads_all_entries_with_unique_ids() -> None:

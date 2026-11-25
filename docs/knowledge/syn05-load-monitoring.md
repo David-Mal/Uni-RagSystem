@@ -32,9 +32,9 @@ experimental estimates. Excluding overlapping observations does not, by itself,
 settle the ratio's interpretation.
 
 The project follows
-[architecture plan section 5.7](../milestone2-architecture-and-plan.md):
-acute means the last seven days, and chronic uses the preceding 21-28 days
-excluding the acute period. The allowed load metrics are tonnage or RPE-weighted
+[indicator specification, section 5](../indicator-spec.md):
+acute means the last seven days, and chronic is the weekly average of the
+preceding 28 days, excluding the acute period. The allowed load metrics are tonnage or RPE-weighted
 tonnage. Report acute load, chronic load and their ratio separately, preserving
 the metric and time windows. The ratio is a descriptive heuristic only, never a
 predictive indicator or a causal conclusion.
