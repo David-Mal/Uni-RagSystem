@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from src.ingest.adapters.base import AdapterRegistry, SourceProbe
+from src.ingest.adapters.opengym import OpenGymAdapter
 from src.ingest.errors import IngestError
 from src.ingest.model import IngestFlag, Note
 from src.ingest.normalize import implausible_weight_flags, unit_mix_flags
@@ -34,7 +35,7 @@ class IngestResult(BaseModel):
 
 def default_registry() -> AdapterRegistry:
     """The adapters shipped with the project."""
-    return AdapterRegistry()
+    return AdapterRegistry([OpenGymAdapter()])
 
 
 def ingest_workout_log(
