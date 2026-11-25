@@ -1,0 +1,13 @@
+Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE
+2026-11-10 18:00:00,Upper Body,45m,Bench Press,1,60,10,,,Controlled reps,Evening workout,7
+2026-11-10 18:00:00,Upper Body,45m,Bench Press,2,65,8,,,Stable tempo,Evening workout,8
+2026-11-10 18:00:00,Upper Body,45m,Bench Press,3,70,6,,,,Evening workout,9
+2026-11-10 18:00:00,Upper Body,45m,Barbell Row,1,40,12,,,,Evening workout,7
+2026-11-10 18:00:00,Upper Body,45m,Barbell Row,2,45,10,,,,Evening workout,8
+2026-11-10 18:00:00,Upper Body,45m,Barbell Row,3,50,8,,,Controlled movement,Evening workout,9
+2026-11-12 17:00:00,Lower Body,50m,Squat,1,70,10,,,Stable tempo,Afternoon workout,7
+2026-11-12 17:00:00,Lower Body,50m,Squat,2,80,8,,,,Afternoon workout,8
+2026-11-12 17:00:00,Lower Body,50m,Squat,3,90,6,,,,Afternoon workout,9
+2026-11-12 17:00:00,Lower Body,50m,Deadlift,1,80,8,,,,Afternoon workout,7
+2026-11-12 17:00:00,Lower Body,50m,Deadlift,2,90,6,,,,Afternoon workout,
+2026-11-12 17:00:00,Lower Body,50m,Deadlift,3,110,0,,,Attempt not completed,Afternoon workout,10

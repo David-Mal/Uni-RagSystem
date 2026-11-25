@@ -1,0 +1,135 @@
+# Partition manifest (issue P1, plan section 2.4 control 1). Single source of truth for pool membership.
+# Append-only: after merge an id never changes pool, is never removed and never reused. See README.md.
+# Golden entries are opaque on purpose (D5). Their real descriptions are written by hand and live in
+# data/golden/partition_details.yaml on the golden branches, not here (D6).
+manifest_version: v1
+
+# Inclusive [first, last] seed ranges. An item is identified by (generator, seed). Human-written items use seed: null.
+seeds:
+  train: [1, 9999]
+  dev: [20000, 20999]
+  golden: [100000, 100999]
+
+personas:
+  train:
+    - {id: ps_tr_novice_linear, description: "novice on a linear-progression program, 3 full-body sessions a week"}
+    - {id: ps_tr_returning_lifter, description: "returning after a long break, conservative loads, rebuilding"}
+    - {id: ps_tr_powerlifter_peaking, description: "powerlifter in a peaking block, heavy singles and low reps"}
+    - {id: ps_tr_bodybuilder_hypertrophy, description: "bodybuilder, high volume, moderate loads, 5 to 6 sessions a week"}
+    - {id: ps_tr_masters_lifter, description: "lifter over 50, long warm-ups, careful progression, frequent deloads"}
+    - {id: ps_tr_busy_parent_3x, description: "busy parent, three short sessions a week, often cut short"}
+    - {id: ps_tr_student_irregular, description: "student with an irregular schedule, sessions bunched around exams"}
+    - {id: ps_tr_home_gym_minimal, description: "home gym with a barbell and dumbbells only, few exercise variations"}
+    - {id: ps_tr_crossfit_crossover, description: "former CrossFit athlete, mixes lifting with conditioning, uses lb"}
+    - {id: ps_tr_ppl_high_frequency, description: "push/pull/legs split, six days a week, high weekly volume"}
+    - {id: ps_tr_deload_averse, description: "intermediate lifter who never deloads and pushes through fatigue"}
+    - {id: ps_tr_data_tracker, description: "intermediate lifter who logs everything, RPE on every working set"}
+  dev:
+    - {id: ps_dev_shift_worker, description: "shift worker, session days and times change every week"}
+    - {id: ps_dev_teen_athlete, description: "teenage athlete in a school sports program, light to moderate loads"}
+    - {id: ps_dev_rehab_return, description: "returning from a minor injury, cautious about pain wording"}
+    - {id: ps_dev_travelling_consultant, description: "frequent traveller, hotel gyms, mixed units across trips"}
+  golden:
+    - {id: ps_gd_01, description: "golden persona 1"}
+    - {id: ps_gd_02, description: "golden persona 2"}
+    - {id: ps_gd_03, description: "golden persona 3"}
+    - {id: ps_gd_04, description: "golden persona 4"}
+    - {id: ps_gd_05, description: "golden persona 5"}
+    - {id: ps_gd_06, description: "golden persona 6"}
+
+# A template is a cause x parameter variant. Pools are disjoint by template; causes (categories) are shared.
+# Every pool covers all 9 categories: the 7 hypothesis labels, abstention and numeric_trap.
+# train/dev entries record their category. Golden categories live in the restricted details file (D5, D7).
+scenario_templates:
+  train:
+    - {id: st_tr_low_volume_upper_body, category: insufficient_weekly_volume, description: "upper-body muscles stay below the weekly effective-set band for 6 weeks"}
+    - {id: st_tr_rpe_drift_squat, category: fatigue_accumulation, description: "squat RPE rises 1.5 points at constant load over 5 weeks"}
+    - {id: st_tr_flat_bench_load, category: stagnant_load_progression, description: "bench press e1RM flat for 8 weeks at the same working load"}
+    - {id: st_tr_deadlift_load_jump, category: load_spike, description: "deadlift volume doubles in one week after a stable month"}
+    - {id: st_tr_missed_weeks_gaps, category: inconsistent_frequency, description: "two-week gaps between clusters of sessions for the main lift"}
+    - {id: st_tr_rpe_mostly_missing, category: logging_quality_issue, description: "RPE logged on a small fraction of working sets"}
+    - {id: st_tr_travel_week_notes, category: confounder_present, description: "notes mention a week of travel and poor sleep inside the analysis window"}
+    - {id: st_tr_too_few_sessions, category: abstention, description: "only three sessions for the exercise, not enough history for any analysis"}
+    - {id: st_tr_mixed_units_squat, category: numeric_trap, description: "same exercise logged in kg and lb within the window"}
+  dev:
+    - {id: st_dev_low_volume_legs, category: insufficient_weekly_volume, description: "leg muscles under the weekly band while upper body is adequate"}
+    - {id: st_dev_rpe_drift_press, category: fatigue_accumulation, description: "overhead press RPE rises gradually with loads held constant"}
+    - {id: st_dev_flat_deadlift_load, category: stagnant_load_progression, description: "deadlift working load unchanged for 10 weeks with steady e1RM"}
+    - {id: st_dev_row_volume_spike, category: load_spike, description: "row volume jumps sharply after a deload week"}
+    - {id: st_dev_irregular_cadence, category: inconsistent_frequency, description: "sessions alternate between two per week and none"}
+    - {id: st_dev_duplicate_sets, category: logging_quality_issue, description: "duplicated sets and a few implausible loads in the export"}
+    - {id: st_dev_illness_note, category: confounder_present, description: "notes mention an illness during the weeks of lower performance"}
+    - {id: st_dev_sparse_rpe_short_log, category: abstention, description: "short log with almost no RPE, hypotheses on fatigue not assessable"}
+    - {id: st_dev_failed_reps_zero, category: numeric_trap, description: "failed sets recorded with zero reps among normal working sets"}
+  golden:
+    - {id: st_gd_01, description: "golden scenario template 1"}
+    - {id: st_gd_02, description: "golden scenario template 2"}
+    - {id: st_gd_03, description: "golden scenario template 3"}
+    - {id: st_gd_04, description: "golden scenario template 4"}
+    - {id: st_gd_05, description: "golden scenario template 5"}
+    - {id: st_gd_06, description: "golden scenario template 6"}
+    - {id: st_gd_07, description: "golden scenario template 7"}
+    - {id: st_gd_08, description: "golden scenario template 8"}
+    - {id: st_gd_09, description: "golden scenario template 9"}
+    - {id: st_gd_10, description: "golden scenario template 10"}
+    - {id: st_gd_11, description: "golden scenario template 11"}
+    - {id: st_gd_12, description: "golden scenario template 12"}
+    - {id: st_gd_13, description: "golden scenario template 13"}
+    - {id: st_gd_14, description: "golden scenario template 14"}
+    - {id: st_gd_15, description: "golden scenario template 15"}
+    - {id: st_gd_16, description: "golden scenario template 16"}
+    - {id: st_gd_17, description: "golden scenario template 17"}
+    - {id: st_gd_18, description: "golden scenario template 18"}
+
+# consumer: extractor (F3/F4 notes for the SLM extractor), classifier (F8 triage classifier),
+#           messages (golden, P5/Fi4), tier2_notes (golden, Fi2).
+# Hard-negative families are plain families; the classifier has its own (pf_*_cls_hn_*).
+phrasing_families:
+  train:
+    - {id: pf_tr_terse_log, description: "terse gym-log shorthand, comma separated", consumer: extractor}
+    - {id: pf_tr_formal_sentence, description: "complete formal sentences", consumer: extractor}
+    - {id: pf_tr_abbrev_heavy, description: "abbreviation-heavy, slash separated", consumer: extractor}
+    - {id: pf_tr_emoji_typos, description: "lowercase with typos and a trailing emoji", consumer: extractor}
+    - {id: pf_tr_story_style, description: "short story with an opener sentence", consumer: extractor}
+    - {id: pf_tr_lowercase_runon, description: "lowercase run-on, no punctuation", consumer: extractor}
+    - {id: pf_tr_question_style, description: "report followed by a question", consumer: extractor}
+    - {id: pf_tr_bullet_log, description: "markdown bullet list", consumer: extractor}
+    - {id: pf_tr_numbers_first, description: "numbers first, then exercise", consumer: extractor}
+    - {id: pf_tr_coach_report, description: "third-person structured session note", consumer: extractor}
+    - {id: pf_tr_hn_figurative, description: "hard negatives: hyperbole about effort", consumer: extractor}
+    - {id: pf_tr_hn_negated, description: "hard negatives: explicit negation of pain", consumer: extractor}
+    - {id: pf_tr_cls_short_note, description: "short lowercase note", consumer: classifier}
+    - {id: pf_tr_cls_coach_checkin, description: "check-in message to a coach", consumer: classifier}
+    - {id: pf_tr_cls_set_comment, description: "bracketed per-set comment", consumer: classifier}
+    - {id: pf_tr_cls_hn_effort, description: "hard negatives (figurative or negated) as short notes", consumer: classifier}
+    - {id: pf_tr_cls_plain_report, description: "plain first-person report of a session with one symptom", consumer: classifier}
+    - {id: pf_tr_cls_symptom_detail, description: "symptom described with location, onset and intensity", consumer: classifier}
+    - {id: pf_tr_cls_clinical_tone, description: "formal clinical wording of the complaint", consumer: classifier}
+    - {id: pf_tr_cls_casual_chat, description: "casual chat message mentioning how the body felt", consumer: classifier}
+    - {id: pf_tr_cls_checklist, description: "checklist of symptoms with yes/no answers", consumer: classifier}
+    - {id: pf_tr_cls_hn_soreness, description: "classifier hard negatives: ordinary muscle soreness versus pain", consumer: classifier}
+  dev:
+    - {id: pf_dev_gym_chat, description: "chatty gym-buddy message", consumer: extractor}
+    - {id: pf_dev_caps_terse, description: "all caps, dash separated", consumer: extractor}
+    - {id: pf_dev_diary, description: "diary entry with a weekday", consumer: extractor}
+    - {id: pf_dev_hn_mixed, description: "hard negatives (figurative or negated), chat style", consumer: extractor}
+    - {id: pf_dev_cls_voice_memo, description: "transcribed voice memo", consumer: classifier}
+    - {id: pf_dev_cls_hn_memo, description: "hard negatives (figurative or negated) as voice memos", consumer: classifier}
+    - {id: pf_dev_cls_forum_post, description: "forum-style post describing a complaint at length", consumer: classifier}
+    - {id: pf_dev_cls_hn_past_pain, description: "classifier hard negatives: old pain mentioned as resolved", consumer: classifier}
+  golden:
+    - {id: pf_gd_01, description: "golden phrasing family 1", consumer: messages}
+    - {id: pf_gd_02, description: "golden phrasing family 2", consumer: messages}
+    - {id: pf_gd_03, description: "golden phrasing family 3", consumer: messages}
+    - {id: pf_gd_04, description: "golden phrasing family 4", consumer: messages}
+    - {id: pf_gd_05, description: "golden phrasing family 5", consumer: messages}
+    - {id: pf_gd_06, description: "golden phrasing family 6", consumer: messages}
+    - {id: pf_gd_07, description: "golden phrasing family 7", consumer: messages}
+    - {id: pf_gd_08, description: "golden phrasing family 8", consumer: messages}
+    - {id: pf_gd_09, description: "golden phrasing family 9", consumer: tier2_notes}
+    - {id: pf_gd_10, description: "golden phrasing family 10", consumer: tier2_notes}
+    - {id: pf_gd_11, description: "golden phrasing family 11", consumer: tier2_notes}
+    - {id: pf_gd_12, description: "golden phrasing family 12", consumer: tier2_notes}
+
+# Not pooled (D1): a flat list shared by every pool.
+exercise_families: [squat, bench, deadlift, row, overhead_press, accessories]
