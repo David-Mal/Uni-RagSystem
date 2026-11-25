@@ -38,7 +38,7 @@ dev = [
 
 [tool.uv]
 package = false
-default-groups = ["core", "dev"]
+default-groups = ["core", "rag", "mcp", "dev"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

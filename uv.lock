@@ -2307,7 +2307,7 @@ wheels = [
 name = "uni-ragsystem"
 version = "0.1.0"
 source = { virtual = "." }
-default-groups = ["core", "dev"]
+default-groups = ["core", "dev", "mcp", "rag"]
 
 [package.dev-dependencies]
 core = [
