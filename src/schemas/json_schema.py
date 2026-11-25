@@ -32,13 +32,17 @@ def extraction_json_schema(exercise_ids: Iterable[str]) -> dict[str, Any]:
     """Schema for ``ExtractionResult`` with ``exercise_id`` restricted to ``exercise_ids`` plus ``unknown``.
 
     Used for constrained decoding (Outlines). ``unknown`` is always legal so the grammar never forces a
-    guess. Ids are de-duplicated and sorted so the schema (and its hash) is stable for a given id set.
+    guess. Every key is required (``load``/``reps``/``rpe`` may be ``null``), so the model cannot encode
+    "not reported" in two ways. Ids are de-duplicated and sorted so the schema (and its hash) is stable.
     """
+    if isinstance(exercise_ids, str):
+        raise TypeError("exercise_ids must be a collection of ids, not a single string")
     ids = sorted({*exercise_ids, UNKNOWN_EXERCISE_ID})
     schema = copy.deepcopy(model_json_schema(ExtractionResult))
     prop = schema["properties"]["exercise_id"]
     prop.pop("pattern", None)
     prop["enum"] = ids
+    schema["required"] = list(ExtractionResult.model_fields)
     return schema
 
 

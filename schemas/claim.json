@@ -32,6 +32,7 @@
     "citations": {
       "description": "Knowledge chunk ids, e.g. syn03#c04.",
       "items": {
+        "pattern": "^\\S+$",
         "type": "string"
       },
       "title": "Citations",
@@ -58,6 +59,7 @@
     "numbers": {
       "description": "Tool value ids, format v_<name>_<NNNN>.",
       "items": {
+        "pattern": "^v_[a-z0-9_]+_\\d{4,}$",
         "type": "string"
       },
       "title": "Numbers",
