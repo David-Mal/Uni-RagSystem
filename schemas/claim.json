@@ -1,0 +1,81 @@
+{
+  "$comment": "schema_version=v0",
+  "$defs": {
+    "EvidenceLevel": {
+      "description": "How strongly the tool outputs support a hypothesis (plan §5.6).",
+      "enum": [
+        "supported",
+        "weak",
+        "insufficient"
+      ],
+      "title": "EvidenceLevel",
+      "type": "string"
+    },
+    "HypothesisLabel": {
+      "description": "Closed hypothesis taxonomy for plateau explanations (plan §5.6, 7 labels).",
+      "enum": [
+        "insufficient_weekly_volume",
+        "fatigue_accumulation",
+        "stagnant_load_progression",
+        "load_spike",
+        "inconsistent_frequency",
+        "logging_quality_issue",
+        "confounder_present"
+      ],
+      "title": "HypothesisLabel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One structured claim emitted by the agent (plan §5.8).\n\n``numbers`` hold tool value ids and ``citations`` hold knowledge chunk ids. The verifier checks\nthat both exist in this run and that every digit in ``text`` matches a referenced value.",
+  "properties": {
+    "citations": {
+      "description": "Knowledge chunk ids, e.g. syn03#c04.",
+      "items": {
+        "pattern": "^\\S+$",
+        "type": "string"
+      },
+      "title": "Citations",
+      "type": "array"
+    },
+    "evidence_level": {
+      "$ref": "#/$defs/EvidenceLevel"
+    },
+    "exercise_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exercise Id"
+    },
+    "hypothesis_label": {
+      "$ref": "#/$defs/HypothesisLabel"
+    },
+    "numbers": {
+      "description": "Tool value ids, format v_<name>_<NNNN>.",
+      "items": {
+        "pattern": "^v_[a-z0-9_]+_\\d{4,}$",
+        "type": "string"
+      },
+      "title": "Numbers",
+      "type": "array"
+    },
+    "text": {
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "hypothesis_label",
+    "evidence_level",
+    "text"
+  ],
+  "title": "Claim",
+  "type": "object"
+}
