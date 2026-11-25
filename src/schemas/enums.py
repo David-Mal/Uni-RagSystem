@@ -58,8 +58,9 @@ class Outcome(StrEnum):
     """Outcome of the set described in a note or message. The field is never null.
 
     ``completed``: no failure or partial completion is reported, which includes notes that do not mention the
-    outcome at all. ``partial``: fewer reps than planned were completed. ``failed``: the attempted rep or set was not
-    completed. Proposed in the #69 review, and the Fi1 guideline should carry the same definition.
+    outcome at all. ``partial``: the set fell short of the plan, but at least one rep was completed ("got 3 of 5,
+    missed the fourth"). ``failed``: no rep was completed. The two do not overlap (agreed in the #69 and #74 reviews),
+    and the Fi1 guideline carries the same definition.
     """
 
     COMPLETED = "completed"
