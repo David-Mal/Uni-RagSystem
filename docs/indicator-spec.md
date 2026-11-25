@@ -161,7 +161,8 @@ and reps are not required, so bodyweight sets count.
 always labeled `"heuristic"` and is never mapped to injury risk.
 
 **Valid set:** a working set that passes, in this order: `missing_reps`, `no_weight` (weight present and > 0), `no_rpe` (RPE
-present; **only** for the metric `rpe_weighted`). All exercises count, including `unknown` ones.
+present; **only** for the metric `rpe_weighted`), `not_allowed` (the exercise is in the allowed set, if one was passed).
+Without an allowed set all exercises count, including `unknown` ones.
 
 **Set load.** `tonnage`: `w * r`. `rpe_weighted`: `w * r * RPE / [load.rpe_divisor]` (10).
 
