@@ -1,0 +1,45 @@
+# Rule filter for retrieve_knowledge (issue M6, #37; plan §5.4).
+# Queries matching any symptom/pain/injury pattern are rejected with ToolError("rejected_query").
+
+rejected_patterns:
+  - '\bpain\b'
+  - '\bpainful\b'
+  - '\binjur(y|ies|ed|ing)\b'
+  - '\bhurt(s|ing)?\b'
+  - '\bstrain(ed|s|ing)?\b'
+  - '\bsprain(ed|s)?\b'
+  - '\bswell(ing|ed|s)?\b'
+  - '\bswollen\b'
+  - '\bache(s|d|ing)?\b'
+  - '\baching\b'
+  - '\btear(s|ing)?\b'
+  - '\btorn\b'
+  - '\btendin(itis|opathy)\b'
+  - '\binflam(mation|ed)\b'
+  - '\bnumb(ness)?\b'
+  - '\btingl(ing|e)\b'
+  - '\bsharp\s+(twinge|stab|sensation|discomfort)\b'
+  - '\bpop(ped|ping)?\b'
+  - '\brehab(ilitation)?\b'
+  - '\bdiagnos(e|is|tic)\b'
+  - '\bmedical\b'
+  - '\bphysio(therapy|therapist)?\b'
+  - '\bdoctor\b'
+  - '\bchest\s+tightness\b'
+  - '\bdizz(y|iness)\b'
+  - '\bfaint(ed|ing)?\b'
+  - '\bcramp(s|ing)?\b'
+  - '\bbruis(e|ed|ing)\b'
+  - '\bdislocat(ed|ion)\b'
+  - '\bfracture(d|s)?\b'
+  - '\bherniat(ed|ion)\b'
+
+# Mapping from the 7 closed hypotheses (plan §5.6) to allowed synthesis topic_tags (TAGS.md)
+hypothesis_to_topic_tags:
+  insufficient_weekly_volume: ["volume"]
+  fatigue_accumulation: ["rpe", "fatigue_load"]
+  stagnant_load_progression: ["progression", "intensity"]
+  load_spike: ["load_monitoring", "fatigue_load"]
+  inconsistent_frequency: ["frequency"]
+  logging_quality_issue: ["logging"]
+  confounder_present: ["confounders"]
