@@ -57,13 +57,14 @@ def test_source_types_and_positive_rep_failure(
     path = write_csv(tuple(values), [tuple(values.values())])
     row = HevyParser().parse_source(path)[0]
     assert row.reps == 8 and row.mapped_set_type == mapped
-    assert row.source_failure_flag == flagged and row.failed == flagged
+    # Taken to failure with 8 reps completed: not a failed set
+    assert row.taken_to_failure == flagged and row.failed is False
 
 
 def test_zero_reps_is_independent_of_failure_type(write_csv: Callable[..., Path], hevy_values: dict[str, str]) -> None:
     values = dict(hevy_values, reps="0", rpe="")
     row = HevyParser().parse_source(write_csv(tuple(values), [tuple(values.values())]))[0]
-    assert row.failed and not row.source_failure_flag and row.rpe is None
+    assert row.failed and not row.taken_to_failure and row.rpe is None
 
 
 @pytest.mark.parametrize("source_type", ("working", "drop", "Warmup", ""))

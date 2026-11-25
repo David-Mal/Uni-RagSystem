@@ -1,4 +1,4 @@
-"""Functional community-format Hevy source parser, not a D4 BaseAdapter."""
+"""Hevy adapter: community-format source parser plus conversion to canonical sets (D6, format unverified)."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -8,6 +8,11 @@ import re
 from types import MappingProxyType
 from typing import Literal
 
+from src.ingest.adapters.base import BaseAdapter, SourceProbe
+from src.ingest.errors import IngestError
+from src.ingest.model import CanonicalSet, CanonicalSets, IngestFlag
+
+from ._canonical import KM_PER_MILE, build_set
 from ._csv_source import header_fields, integer, number, read_csv
 
 HEVY_HEADERS = (
@@ -21,7 +26,7 @@ _SET_TYPES = {"normal": "normal", "warmup": "warmup", "dropset": "drop", "failur
 
 
 class HevyParseError(ValueError):
-    """Local Hevy parsing failure; not the missing shared D4 IngestError."""
+    """Hevy parsing failure; the adapter reports it as ``IngestError``."""
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -62,16 +67,17 @@ class _HevyRow:
     raw: Mapping[str, str]
 
     @property
-    def source_failure_flag(self) -> bool:
+    def taken_to_failure(self) -> bool:
+        """Set type ``failure``: the reps were completed and the set ended at failure. Not a failed set (spec §1.1)."""
         return self.source_set_type == "failure"
 
     @property
     def failed(self) -> bool:
-        return self.reps == 0 or self.source_failure_flag
+        return self.reps == 0
 
 
 class HevyParser:
-    """Expose detection and parsing now; real D4 conversion/registration later."""
+    """Detection and parsing of the source file."""
 
     @staticmethod
     def detect(header: Sequence[str] | str) -> bool:
@@ -118,3 +124,35 @@ class HevyParser:
                 superset_id=row["superset_id"] if row["superset_id"] != "" else None, raw=MappingProxyType(dict(row)),
             ))
         return tuple(parsed)
+
+
+class HevyAdapter(BaseAdapter):
+    """Hevy CSV export; the unit comes from the column names."""
+
+    name = "hevy"
+
+    def detect(self, probe: SourceProbe) -> bool:
+        """True for the documented header sets only."""
+        return probe.header is not None and HevyParser.detect(probe.header)
+
+    def to_canonical(self, source: Path) -> CanonicalSets:
+        """Parse and convert. Distances become kilometres."""
+        try:
+            rows = HevyParser().parse_source(source)
+        except HevyParseError as exc:
+            raise IngestError(f"hevy: {exc}") from exc
+        sets: list[CanonicalSet] = []
+        flags: list[IngestFlag] = []
+        for r in rows:
+            miles = r.distance_column == "distance_miles" and r.distance is not None
+            canonical, flag = build_set(
+                app=self.name, row_number=r.row_number, workout_ts=r.started_at, workout_name=r.workout_name,
+                exercise=r.exercise_name, set_index=r.set_index, set_type=r.mapped_set_type, weight=r.weight,
+                unit=r.source_unit, reps=r.reps, rpe=r.rpe,
+                distance_km=r.distance * KM_PER_MILE if miles else r.distance,  # type: ignore[operator]
+                duration_s=r.duration_seconds, set_note=r.exercise_notes, workout_note=r.workout_notes,
+                superset_id=r.superset_id,
+            )  # fmt: skip
+            sets.append(canonical)
+            flags.extend([flag] if flag else [])
+        return CanonicalSets(sets=tuple(sets), flags=tuple(flags))

@@ -1,4 +1,4 @@
-"""Functional community-format Strong source parser, not a D4 BaseAdapter."""
+"""Strong adapter: community-format source parser plus conversion to canonical sets (D6, format unverified)."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -9,6 +9,11 @@ import re
 from types import MappingProxyType
 from typing import Literal
 
+from src.ingest.adapters.base import BaseAdapter, SourceProbe
+from src.ingest.errors import IngestError
+from src.ingest.model import CanonicalSet, CanonicalSets, IngestFlag
+
+from ._canonical import build_set
 from ._csv_source import header_fields, integer, number, read_csv
 
 LOGGER = logging.getLogger(__name__)
@@ -19,7 +24,7 @@ STRONG_HEADERS = (
 
 
 class StrongParseError(ValueError):
-    """Local Strong parsing failure; not the missing shared D4 IngestError."""
+    """Strong parsing failure; the adapter reports it as ``IngestError``."""
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -79,7 +84,7 @@ class _StrongRow:
 
 
 class StrongParser:
-    """Expose detection and parsing now; real D4 conversion/registration later."""
+    """Detection and parsing of the source file."""
 
     @staticmethod
     def detect(header: Sequence[str] | str) -> bool:
@@ -128,3 +133,35 @@ class StrongParser:
             ))
         LOGGER.warning("Strong source set types are unverified; treating all parsed sets as normal.")
         return tuple(parsed)
+
+
+class StrongAdapter(BaseAdapter):
+    """Strong CSV export. Without a unit in the header (``Weight``), ``unit_hint`` must say kg or lb."""
+
+    name = "strong"
+
+    def __init__(self, unit_hint: Literal["kg", "lb"] | None = None) -> None:
+        self._unit_hint = unit_hint
+
+    def detect(self, probe: SourceProbe) -> bool:
+        """True for the documented header sets only."""
+        return probe.header is not None and StrongParser.detect(probe.header)
+
+    def to_canonical(self, source: Path) -> CanonicalSets:
+        """Parse and convert. Every set is treated as normal, because Strong's set-type encoding is unverified."""
+        try:
+            rows = StrongParser().parse_source(source, unit_hint=self._unit_hint)
+        except StrongParseError as exc:
+            raise IngestError(f"strong: {exc}") from exc
+        sets: list[CanonicalSet] = []
+        flags: list[IngestFlag] = []
+        for r in rows:
+            canonical, flag = build_set(
+                app=self.name, row_number=r.row_number, workout_ts=r.workout_at, workout_name=r.workout_name,
+                exercise=r.exercise_name, set_index=r.set_order, set_type=r.mapped_set_type, weight=r.weight,
+                unit=r.source_unit, reps=r.reps, rpe=r.rpe, distance_km=r.distance, duration_s=r.duration_seconds,
+                set_note=r.notes, workout_note=r.workout_notes, superset_id=None,
+            )  # fmt: skip
+            sets.append(canonical)
+            flags.extend([flag] if flag else [])
+        return CanonicalSets(sets=tuple(sets), flags=tuple(flags))

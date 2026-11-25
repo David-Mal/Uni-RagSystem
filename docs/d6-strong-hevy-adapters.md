@@ -1,9 +1,17 @@
 # D6: Strong and Hevy source parsing
 
-Status: **functional source parsers and tests implemented; D4 integration blocked
-in this checkout**. Both formats remain **[TO VERIFY against real exports]**.
-The parsers read community-documented CSV formats into private source records.
-They do not produce canonical sets or replace the shared ingestion architecture.
+Status: **source parsers and D4 integration implemented.** Both formats remain
+**[TO VERIFY against real exports]**.
+
+> **Integration update (2026-11-25).** D4 is merged. `StrongAdapter` and `HevyAdapter` implement `BaseAdapter` and are in
+> the default registry of `ingest_workout_log`. Where a later section still says that D4 is missing or blocked, this
+> note replaces it. Decisions taken:
+> - Parse errors are reported as `IngestError`; nothing is stored.
+> - Strong's `unit_hint` is an argument of `ingest_workout_log`; a file without a unit and without a hint is an error.
+> - Set indices are stored as exported (Strong from 1, Hevy from 0). Distances are stored in kilometres.
+> - Hevy `set_type = failure` means **taken to failure**. Only 0 reps make a set failed (`docs/indicator-spec.md` §1.1).
+> - Negative numbers are errors; an RPE outside 0-10 is flagged and treated as missing.
+> - Workout duration is parsed but not stored: the canonical model has no field for it.
 
 ## References
 
@@ -191,11 +199,9 @@ Implemented Hevy behavior:
 | `normal` | `normal` | False |
 | `warmup` | `warmup` | False |
 | `dropset` | `drop` | False |
-| `failure` | `failure` | True |
+| `failure` | `failure` | False (taken to failure, see the update above) |
 
-The source parser exposes `failed = reps == 0 or source_failure_flag`, including
-a flagged `failure` row with positive repetitions as requested for D6. It
-preserves both the original type and flag so D4 can apply its actual rules.
+The source parser exposes `failed = reps == 0` and keeps the original type.
 Unknown source spellings are rejected. These candidate strings are not a new
 canonical enum. Final mapping must reuse the real shared implementation
 [TO VERIFY]; no source type is inferred from weight or RPE.
