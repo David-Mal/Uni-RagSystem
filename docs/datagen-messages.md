@@ -47,12 +47,12 @@ These ids must be in the manifest's **train** and **dev** pools respectively. Th
 | `pf_tr_bullet_log` | train | markdown bullet list |
 | `pf_tr_numbers_first` | train | numbers first, then exercise |
 | `pf_tr_coach_report` | train | third-person structured session note |
-| `pf_tr_hn_figurative` | train | hard negatives: hyperbole about effort |
-| `pf_tr_hn_negated` | train | hard negatives: explicit negation of pain |
+| `pf_tr_hn_figurative` | train | hard negatives: hyperbole about effort, exclamations (own renderer) |
+| `pf_tr_hn_negated` | train | hard negatives: explicit negation of pain, status update (own renderer) |
 | `pf_dev_gym_chat` | dev | chatty gym-buddy message |
 | `pf_dev_caps_terse` | dev | all caps, dash separated |
 | `pf_dev_diary` | dev | diary entry with a weekday |
-| `pf_dev_hn_mixed` | dev | hard negatives (figurative or negated), chat style |
+| `pf_dev_hn_mixed` | dev | hard negatives (figurative or negated), texting style (own renderer) |
 
 If P1 uses other ids, map them here, or rename the keys in `families.py`. The generator reads the pool from the
 manifest, never from this table.
@@ -61,14 +61,19 @@ manifest, never from this table.
 
 These are made by construction and must agree with the labeling guideline (Fi1, #7) `[TO VERIFY with Fi1]`:
 
-- **Triage.** `green`: no symptom, a positive remark, figurative effort language ("this set killed me") or an explicit
-  negation ("no pain at all"). `yellow`: mild discomfort, ache, stiffness, tightness, a twinge, or soreness that
+- **Triage.** `green`: no symptom, a positive remark, figurative effort language ("legs are dead after that") or an
+  explicit negation ("pain free today"). `yellow`: mild discomfort, ache, stiffness, tightness, a twinge, or soreness that
   persists for days. `red`: sharp or stabbing pain, swelling, a pop or snap with pain, numbness or tingling,
   dizziness or fainting, chest pain or tightness. A **yellow hard negative** is a negated red cue plus a real mild
   symptom ("no sharp pain, just a bit of stiffness in my knee") or figurative language plus a real mild symptom.
-- **Outcome.** `completed`: the set was done as written. `partial`: fewer reps than planned, and `reps` = reps
-  completed ("managed 2 out of 3" gives `reps=2`). `failed`: the attempted rep was not completed, so `reps=0`, and
-  `rpe` is `null` or `10`.
+  **Red with a distractor**: 15% of red items put a negated mild symptom or figurative effort before the real red
+  symptom ("legs are dead after that, but stabbing pain in my shoulder"), so negation never means "not red".
+- **Outcome** (never null; definition agreed in the #69 review). `completed`: no failure or partial completion is
+  reported. `partial`: fewer reps than planned, and `reps` = reps completed ("managed 2 out of 3" gives `reps=2`).
+  `failed`: the attempted rep was not completed. The text gives no count, so `reps` is `null` (a missing number is not
+  zero), `rpe` is `null` or `10`, and the kinematic observation is never `grinding_rep`.
+- **No contradictions.** Positive remarks ("moved well", "felt strong") appear only on completed sets with no
+  kinematic observation. A rep number in a figurative clause ("dying by rep five") always equals the labeled `reps`.
 - **Load.** Labeled only when the text states it, always with a unit. The value and unit are as written: 225 lbs stays
   `{"value": 225, "unit": "lb"}`. Dumbbell loads are as written (usually per hand). Bodyweight exercises carry no
   load.
@@ -78,16 +83,25 @@ These are made by construction and must agree with the labeling guideline (Fi1, 
 - **Kinematic observation.** Labeled only from what the user says: slow bar speed, a grind, shortened range of
   motion, lost balance, other (grip slipped, bar drifted, setup felt different). This is never a form diagnosis.
 
+## Held-out dev vocabulary and blocked wording
+
+`vocab.CLAUSES` holds one clause vocabulary per pool (symptoms, systemic red cues, positive remarks, figurative,
+negated, negated-red-plus-mild, red distractors, kinematic and outcome phrases). **Train and dev share no phrase**, so
+dev scores and gate rules tuned on `red_dev` are not inflated by phrases seen in training. A test enforces this.
+No phrase reuses wording from the plan's examples (§3.3) or the labeling guideline's examples (Fi1). A test checks word
+3-gram overlap against both.
+
 ## Sampling (template-v0 defaults, constants in `messages.py`)
 
 unknown exercise 10% · load present 85% (lb 25%) · reps present 85% · RPE present 45% ·
 outcome completed/partial/failed 80/10/10% · kinematic `none` 55% · red systemic (dizziness/chest) 30% of red ·
-hard negatives 25% of green, 15% of yellow, never red.
+hard negatives 25% of green, 15% of yellow, never red · red distractor 15% of red.
 Loads come from per-exercise working ranges scaled by a persona multiplier in [0.6, 1.3]. The multiplier is derived
 deterministically from the persona id, because personas carry no numeric fields.
 
-Sample run (stub manifest, `--per-class 100`): 300 items, 300 distinct texts, all 12 train families used, 37 hard
-negatives, 32 `unknown` exercises, 49 lb loads, 143 with RPE.
+Sample run (stub manifest, 3000 train / 300 dev, 35/30/35): 0 plan or guideline phrases; 161 of 1050 red items with a
+distractor; 205 figurative and 201 negated hard negatives; 0 positive remarks on failed, partial or kinematic items;
+0 failed items with a rep count or a grind; 0 rep-number mismatches.
 
 ## Usage
 

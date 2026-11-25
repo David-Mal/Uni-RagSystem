@@ -18,6 +18,7 @@ from src.schemas.models import (
     Claim,
     ExtractionResult,
     Load,
+    read_triage_level,
 )
 from src.schemas.version import SCHEMA_VERSION
 
@@ -39,4 +40,5 @@ __all__ = [
     "export_schemas",
     "extraction_json_schema",
     "max_level",
+    "read_triage_level",
 ]

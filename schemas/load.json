@@ -12,7 +12,7 @@
       "type": "string"
     },
     "value": {
-      "description": "Load magnitude; 0 is allowed for bodyweight-only sets.",
+      "description": "Load magnitude; 0 is allowed for bodyweight-only sets. Ints are accepted (80 -> 80.0).",
       "minimum": 0,
       "title": "Value",
       "type": "number"
