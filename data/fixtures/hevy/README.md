@@ -3,7 +3,8 @@
 **synthetic, built from community headers**
 
 Status: [synthetic.csv](synthetic.csv) contains **12 data rows**, validated with
-Python 3.11.18 on **2026-11-25**. Team approval is pending. The format remains
+Python 3.11.18 on **2026-11-25**, and parsed by the implemented Hevy source
+parser in the passing D6 test suite. Team approval is pending. The format remains
 **[TO VERIFY against real exports]**, unverified against real application exports.
 [header-template.csv](header-template.csv) remains a separate header-only reference.
 
@@ -69,14 +70,15 @@ All six rows in each workout agree on start, end and description. Derived
 workout duration is separate from `duration_seconds`, which is blank in every
 row. Data-row numbers below exclude the header; CSV line numbers are one greater.
 
-## Expected values for future adapter tests
+## Source expectations and future canonical tests
 
-These are source-derived expectations under issue #9's contract, not results
-from an adapter or an instantiated replacement schema. The `weight_kg` header
-unambiguously establishes kg; values below should remain unchanged and retain
-`source_unit="kg"`. Row 11 should yield `rpe=None`. Row 12 must yield `failed=True`
-from zero repetitions independently of the future source failure-flag mapping;
-the other rows have positive repetitions and no source failure type.
+These source-derived expectations follow issue #9's written contract. The
+implemented `HevyParser` tests verify source records against these values; no
+canonical model is instantiated. The `weight_kg` header establishes kg; raw
+`weight` values remain unchanged and retain `source_unit="kg"`. Row 11 yields
+`rpe=None`. Row 12 yields `failed=True` from both zero repetitions and its
+explicit source `failure` flag. Other fixture rows have positive repetitions and
+no source failure type.
 
 | Data row | `exercise_name_raw` | Source index | `weight_kg` | `reps` | `rpe` | Raw `set_type` | `failed` |
 |---:|---|---:|---:|---:|---|---|---|
@@ -93,35 +95,53 @@ the other rows have positive repetitions and no source failure type.
 | 11 | Deadlift | 1 | 90 | 6 | None | normal | False |
 | 12 | Deadlift | 2 | 110 | 0 | 10 | failure | True |
 
-Use D4's actual set-type mapping: the intended canonical types for `normal`,
-`warmup` and `failure` have the corresponding issue #9 names; source `dropset`
-is intended to map to canonical `drop`. That mapping remains [TO VERIFY] with
-the shared implementation, and must not be replaced with an adapter-local enum.
-Canonical index-base handling also awaits D4; the table records source indices.
+The source parser preserves the original type and exposes candidate mapped
+strings from issue #9: `normal -> normal`, `warmup -> warmup`,
+`dropset -> drop`, `failure -> failure`. It marks source `failure` as flagged
+even with positive repetitions, as covered by an isolated test. Final canonical
+conversion must reuse D4's actual rules [TO VERIFY]; no adapter-local canonical
+enum was introduced. Source indices are preserved; canonical base handling
+awaits D4.
 
 Preserve nonempty `exercise_notes` as `set_note`: rows 1 and 7 are `Warmup set`,
 row 2 is `Controlled reps`, row 6 is `Reduced load`, and row 12 is
 `Attempt not completed`. Rows 3, 4, 5, 8, 9, 10 and 11 have blank notes. Empty
-note representation, blank distance/set duration, and blank superset handling
-await D4; no blank was converted to zero or a fabricated identifier.
+notes stay empty strings in the parser; blank distance/set duration and
+supersets become `None`. Final canonical nullability awaits D4. No blank is
+converted to zero or a fabricated identifier.
 
 ## Coverage limits and remaining work
 
 Every `superset_id`, `distance_km` and `duration_seconds` is blank. Nonempty
 superset preservation, set duration distinct from workout duration, distance
-conversion and lbs/miles variants are therefore not exercised. Blank set
+conversion and lbs/miles variants are not exercised by this fixture alone.
+Isolated tests now cover populated opaque superset IDs, set duration versus
+workout duration, raw distance preservation and all four independent weight/
+distance header combinations; distance conversion remains unresolved. Blank set
 duration differs from the zero duration shown in the inspected public example
 and needs team/source-format review. A `failure` row with positive repetitions,
-escaped quotation marks in notes, and invalid-input rejection are not covered.
+escaped quotation marks in notes, and invalid-input rejection are also covered
+by isolated tests rather than these 12 rows.
 The existing quoted timestamps do exercise CSV fields containing commas.
 These are coverage/conformance limitations, not malformed CSV records; the file
-was kept unchanged. See [the D6 handoff](../../../docs/d6-strong-hevy-adapters.md).
+was kept unchanged. See [the D6 implementation and handoff](../../../docs/d6-strong-hevy-adapters.md).
+
+## Automated test result
+
+The D6 ingestion suite passed **95 tests** under Python **3.11.18** in an
+isolated temporary uv environment. Tests read this exact 12-row file without
+modification. They also cover duration subtraction across midnight, invalid
+intervals/timestamps, every documented source type, missing versus zero values,
+notes and deterministic records. Local failures raise `HevyParseError`, not
+shared `IngestError`. See the D6 document for the command and final run result.
 
 ## Completion status
 
 - [x] Exactly 12 populated rows read and validated with Python 3.11.
 - [x] AI-assisted values and manual insertion by Filip recorded as user-reported provenance.
-- [x] Row-level future expectations and duration arithmetic documented without adapter output.
+- [x] Row-level source expectations and future canonical expectations documented.
+- [x] Source detection, unit variants, unknown-header rejection, notes and superset tests executed.
+- [x] All 12 source records, type mappings, failure signals and duration arithmetic tested.
 - [ ] Team approves the fixture/provenance and blank-field conventions.
 - [ ] D4 available; canonical mapping and remaining coverage reviewed.
-- [ ] Adapter detection, unit, unknown-header and preservation tests executed.
+- [ ] Canonical conversion, shared error translation and pipeline registration tested.

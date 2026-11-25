@@ -1,43 +1,84 @@
-# D6: Strong and Hevy adapter preparation
+# D6: Strong and Hevy source parsing
 
-Status: **blocked on D4 in this checkout**. Both application formats remain
-**[TO VERIFY against real exports]**, unverified against real application exports.
-This document and the fixture directories prepare issue #11 without defining a
-replacement ingestion system.
+Status: **functional source parsers and tests implemented; D4 integration blocked
+in this checkout**. Both formats remain **[TO VERIFY against real exports]**.
+The parsers read community-documented CSV formats into private source records.
+They do not produce canonical sets or replace the shared ingestion architecture.
 
 ## References
 
 - [Architecture plan section 2.2](milestone2-architecture-and-plan.md#22-input-formats-and-ingestion): community headers and ingestion rules.
 - [D6, issue #11](https://github.com/David-Mal/Uni-RagSystem/issues/11): adapter, warning, fixture and test requirements.
 - [D4, issue #9](https://github.com/David-Mal/Uni-RagSystem/issues/9): shared models, normalization, storage and pipeline.
-- [RFC](../RFC_Heuristic_Load_Fatigue_Analyzer.md): deterministic numerical processing and failed-set exclusion.
+- [RFC](../RFC_Heuristic_Load_Fatigue_Analyzer.md): deterministic processing and failed-set exclusion.
 
 ## Dependency check: 2026-11-25
 
-The checkout on `feature/filip-d6-adapters` has no `src/ingest/`,
-`tests/ingest/`, `pyproject.toml` or `uv.lock`. Python 3.11.18 is available, but
-pytest is not installed in the inspected Python 3.11 interpreter. GitHub issue
-#9 describes D4; that description is not an implemented interface.
-These paths were rechecked while validating the two populated `synthetic.csv`
-files; D4 is still unavailable locally.
+D4 remains unavailable on `feature/filip-d6-adapters`. The new
+`src/ingest/adapters/` and `tests/ingest/` files are D6 source parsers and their
+tests, not evidence that D4 has arrived. There is still no canonical model,
+shared adapter base, normalization/error layer, registry, storage or ingestion
+pipeline. No `pyproject.toml` or `uv.lock` is present. Issue #9's written contract
+was inspected; an issue description is not an integrated interface.
 
-The missing D4 dependencies are:
-
-| Dependency | D6 work blocked by its absence |
+| Missing D4 dependency | Remaining integration work |
 |---|---|
-| `CanonicalSet`, `CanonicalSets` and their actual model module | Constructing and validating canonical results, including null and note handling. |
-| `BaseAdapter` and the established adapters directory | Implementing `strong.py` and `hevy.py` using the real detection and conversion signatures. |
-| Shared `normalize.py` implementation | Weight conversion, source units, failed-set rules, set-type normalization and explicit date parsing. |
-| `IngestError` and its actual import path | Reporting unknown headers, invalid dates and format failures consistently. |
-| Adapter registration, `ingest_workout_log` and `IngestResult` | Selecting the adapters and passing `unit_hint` through the supported pipeline API. |
-| D4 workout/storage interface and idempotent ingest behavior | Preserving workout duration separately from set duration, grouping workouts and integrating canonical results. |
-| Project dependency configuration and ingestion test setup | Running the required Python 3.11 pytest checks against the shared implementation. |
+| `CanonicalSet`, `CanonicalSets` and actual model imports | Construct validated canonical results, including IDs, index handling, nulls and note fields. |
+| `BaseAdapter` | Connect the working parsers to the actual `detect(header_or_probe)` and `to_canonical(source)` interfaces. |
+| Shared `normalize.py` | Convert raw weights to kg while retaining source units; reuse final failed/type/date handling rather than introduce a second normalizer. |
+| Shared `IngestError` | Translate local parsing failures to the actual shared error contract. |
+| Registry, `ingest_workout_log`, `IngestResult` | Register both adapters and confirm how Strong's hint reaches the pipeline. |
+| Workout/storage interface and idempotency | Preserve workout duration separately from set duration; leave grouping, hashing and storage to D4. |
 
-The plan illustrates `to_canonical(df)`, whereas issue #9 requires a source path
-and says not to hardcode CSV in the shared interface. Use D4's actual interface
-when it arrives; do not implement a second base class to reconcile these examples.
-No models, normalization, adapters, registry, storage or test infrastructure are
-introduced by this preparation.
+The plan illustrates `to_canonical(df)`; issue #9 requires a source path and says
+not to hardcode CSV in the shared interface. D6 currently accepts CSV paths in its
+source-specific parsers. Final adapters must use D4's actual interface. No
+replacement canonical schema, `BaseAdapter`, shared `IngestError`, normalization
+module, registry or persistence was added.
+
+## Implemented parsing API
+
+`StrongParser` and `HevyParser` live in `src/ingest/adapters/`. Each exposes:
+
+- `detect(header)`: accepts decoded column names or a single CSV header record;
+  returns a boolean without reading a file.
+- `parse_source(path)`: reads a UTF-8 comma CSV and returns an ordered tuple of
+  private, frozen source records. Strong also accepts `unit_hint="kg"` or
+  `unit_hint="lb"`. The raw string cells are retained in a read-only snapshot.
+
+For example, `StrongParser().parse_source(path, unit_hint="kg")` supplies a
+deliberate unit decision; `HevyParser().parse_source(path)` uses its unit-bearing
+header. These methods do not return `CanonicalSets` and have no
+`to_canonical` or pipeline registration yet.
+
+Common implemented behavior:
+
+- Accept the complete documented header sets in any column order, with exactly
+  one supported weight column and, for Hevy, one supported distance column.
+  Reject missing, extra, duplicate, unrelated or ambiguous headers. This is a
+  conservative supported format, not a claim about vendor-required subsets.
+- Read UTF-8 with or without a BOM. Preserve CSV record order, duplicate rows,
+  quoted commas, escaped quotes, multiline notes and text whitespace. Reject
+  malformed CSV, invalid UTF-8 and incorrect row widths.
+- Parse finite plain ASCII decimal numbers; repetition/index fields require
+  integers. Only an empty cell is missing. Preserve numeric zero separately from
+  absence. Reject `NULL`, `NaN`, whitespace-only numbers, decimal commas and
+  unsupported numeric syntax instead of guessing.
+- Require a nonempty exercise name and the documented source index base.
+  Preserve raw numeric outliers without inventing physiological limits.
+- Preserve source weights and units without conversion, and source distances
+  with their original column names. Preserve source indices without offset,
+  deduplication, exercise matching or canonical ID generation.
+- Use only the Python standard library, deterministic date/number parsing and
+  no network or LLM calls. Invalid input raises local `StrongParseError` or
+  `HevyParseError` (`ValueError` subclasses), **not D4's missing `IngestError`**.
+
+Missing optional numeric cells become `None`; missing notes stay empty strings.
+Missing Hevy superset IDs become `None`, while populated IDs remain opaque
+strings, including leading zeros. Source parsing accepts an empty Strong
+workout duration as `None`. Canonical nullability and additional source missing
+conventions remain [TO VERIFY]. Header-only files produce no rows after header
+and unit validation; the templates are not populated fixtures.
 
 ## Community evidence inspected: 2026-11-25
 
@@ -66,11 +107,11 @@ validation did not insert its workout rows into the local fixtures.
 | Hevy `set_type` | H1 reports `normal`, `warmup`, `dropset`, `failure`. These are source spellings, not a newly defined canonical enum. |
 | Hevy CSV and blanks | H2 has comma-separated fields, quoted headers/text, empty quoted notes, empty unquoted superset/distance fields, and zero set duration. Blank and zero remain distinct; other missing-number conventions are not established. |
 
-The templates now follow S1/S2's Strong order and H2's Hevy order. That does not
-make order a universal detection requirement or determine required-column subsets.
-English month parsing must remain deterministic rather than depend silently on
-the host locale. Timestamp timezone semantics and D4's parsing API remain
-[TO VERIFY]; no permissive date guessing is authorized.
+The templates follow S1/S2's Strong order and H2's Hevy order. Parsing uses column
+names and the complete documented header sets, so reordered columns are accepted.
+Hevy month parsing uses a fixed English lookup, independent of the host locale.
+Both parsers return naive local datetimes without guessing a timezone; real-export
+timezone semantics and D4's parsing API remain [TO VERIFY].
 
 ## Documented Strong mapping
 
@@ -91,18 +132,26 @@ The target names below come from issue #9, not from a new schema.
 | `Notes` | `set_note`, preserving the supplied text. |
 | `Workout Notes` | `workout_note`, preserving the supplied text. |
 
-Provide the optional `unit_hint` required by issue #11. Never silently assign a
-unit to ambiguous `Weight`. Hint values, conflicts with an explicit unit-bearing
-header, and pipeline forwarding must use D4's actual conventions [TO VERIFY].
+Implemented Strong behavior:
 
-Strong's export set-type encoding is unknown. As required by issue #11, map
-Strong sets to the internal `normal` type and emit a warning that source set
-types are unverified. This does not override `failed = reps == 0 or flagged`
-from shared normalization. Do not invent source failure, warm-up or drop markers.
-Warning integration must follow the existing logger once available [TO VERIFY].
-S1's report that no separate set-type flag is exported does not change this
-explicit D6 requirement. Its zero-for-unused-metrics advice must not suppress
-D4's failed-set rule, including when a source uses zero repetitions for timed work.
+- `Date` must use `YYYY-MM-DD HH:MM:SS` and be a valid calendar timestamp.
+- Workout duration accepts elapsed minute, hour, or spaced hour/minute tokens,
+  such as `45m`, `3h`, `1h 20m`; seconds and clock-time guesses are rejected.
+- `Set Order` is an integer starting at one. Per-exercise reset/contiguity is
+  not imposed by the parser.
+- `Weight (kg)` establishes kg. Ambiguous `Weight` requires an explicit
+  `unit_hint="kg"` or `"lb"`; missing/unsupported hints and a pounds hint
+  conflicting with `Weight (kg)` raise `StrongParseError`. Values remain raw.
+- Every parsed row has `mapped_set_type="normal"` and
+  `source_failure_flag=False`; `failed` is true for zero repetitions.
+  No source warm-up, drop or failure encoding is inferred.
+- Every successful parse logs one warning through the module's standard-library
+  logger: "Strong source set types are unverified; treating all parsed sets as
+  normal." This includes a zero-repetition row, whose type stays normal.
+
+The warning and hint forwarding must be reconciled with D4's actual logging and
+pipeline conventions when available [TO VERIFY]. The issue's normal-set
+requirement applies regardless of additional community claims about Strong.
 
 ## Documented Hevy mapping
 
@@ -123,11 +172,33 @@ D4's failed-set rule, including when a source uses zero repetitions for timed wo
 | `description` | `workout_note`, preserving the supplied text. |
 | `superset_id` | H1 describes a shared number, absent when unused; preserve through D4's actual field type. |
 
-In particular, reported Hevy `dropset` differs from D4's issue-defined `drop`.
-The eventual shared mapping and interpretation of a source `failure` marker must
-be confirmed with D4 [TO VERIFY]; working to failure and a zero-repetition row
-must not be conflated by new adapter assumptions. Neither adapter may call a
-network service or an LLM.
+Implemented Hevy behavior:
+
+- Start/end timestamps must use `D MMM YYYY, HH:mm` with English month
+  abbreviations. Workout duration is end minus start in seconds, including
+  intervals crossing midnight; an end before start is rejected.
+- `set_index` is an integer starting at zero; reset scope is not inferred.
+- Independently accept `weight_kg`/`weight_lbs` and
+  `distance_km`/`distance_miles`. Weight units become source `kg`/`lb`;
+  weights and distances remain unconverted.
+- Preserve description as workout notes, exercise notes as supplied, and
+  superset IDs as opaque source text. Per-set duration stays separate from
+  derived workout duration.
+- Map documented source strings using issue #9's vocabulary:
+
+| Source type | Candidate D4 type | Source failure flag |
+|---|---|---|
+| `normal` | `normal` | False |
+| `warmup` | `warmup` | False |
+| `dropset` | `drop` | False |
+| `failure` | `failure` | True |
+
+The source parser exposes `failed = reps == 0 or source_failure_flag`, including
+a flagged `failure` row with positive repetitions as requested for D6. It
+preserves both the original type and flag so D4 can apply its actual rules.
+Unknown source spellings are rejected. These candidate strings are not a new
+canonical enum. Final mapping must reuse the real shared implementation
+[TO VERIFY]; no source type is inferred from weight or RPE.
 
 ## Populated synthetic fixtures
 
@@ -147,7 +218,7 @@ human-only authorship. Team approval of the fixtures and of this provenance
 against issue #11's hand-written requirement is pending **[TO VERIFY]**.
 Synthetic validation does not verify compatibility with real exports.
 
-### Actual validation: 2026-11-25
+### Fixture validation: 2026-11-25
 
 An inline, standard-library-only Python **3.11.18** check read every data row
 using strict CSV parsing. It checked exact header order and row widths, valid
@@ -187,30 +258,57 @@ The READMEs list expected numeric values and failed status for all 24 rows,
 plus populated note mappings. Both row-11 RPE values should become `None` under
 issue #9's nullable RPE contract. Both row-12 sets must be failed from zero
 repetitions; Strong's row 12 still has internal type `normal` with the mandatory
-warning. Hevy weights have kg established by `weight_kg`; source `dropset` is
-intended for D4's `drop` mapping once that shared mapping is confirmed.
+warning. Hevy weights have kg established by `weight_kg`; the source parser
+currently exposes `dropset -> drop` using the written D4 vocabulary.
 
-Strong's ambiguous `Weight` unit remains **[TO VERIFY]**. No unit is inferred
-from Hevy or chosen as a default. A future test explicitly using `unit_hint="kg"`
-can expect unchanged raw weight values and `source_unit="kg"`; a pounds case
-must use D4's conversion. Canonical index bases, exact blank-note/null handling,
-and the workout-duration destination also await D4. No `set_id`, `log_id`,
+Strong's ambiguous fixture `Weight` unit remains **[TO VERIFY]**. No unit is
+inferred from Hevy or chosen as a default. The parser tests explicitly use
+`unit_hint="kg"` as a conditional test setting, expecting unchanged raw weights
+and `source_unit="kg"`. A pounds-hint parsing test preserves the same raw value
+with source `lb`; final kg normalization must use D4. Canonical index bases,
+exact blank-note/null handling and the workout-duration destination also await
+D4. No `set_id`, `log_id`,
 canonical exercise identifier or `source_app` enum value was invented here.
 
 All Strong `Distance`/`Seconds` and all Hevy `distance_km`/`duration_seconds`/
 `superset_id` cells are blank. They were preserved as missing during validation,
 not coerced to zero. The blank Strong metrics differ from S1's zero convention;
 blank Hevy set durations differ from H2's example. Their source-format and D4
-nullability acceptance remain [TO VERIFY]. Populated supersets, distance/set
-duration preservation, pounds/miles headers, hour-token durations, note escaping,
-and invalid-input behavior are not established by these fixtures. The only Hevy
-`failure` row also has zero repetitions, so positive-repetition failure-flag
-handling is not independently covered. These coverage limits did not justify
-rewriting the completed CSVs.
+nullability acceptance remain [TO VERIFY]. These fixture files do not cover
+populated supersets, pounds/miles variants, hour tokens, escaped notes or
+positive-repetition failure flags. Those cases are now exercised by isolated
+programmatic test inputs in temporary directories. The completed CSVs and
+header templates remain unchanged.
 
-**Validation scope:** source-file checks passed; adapter/Pydantic integration
-and pytest tests were **not run**, because D4 and the project test setup are
-missing. The inline check is not a replacement adapter or shared normalizer.
+## Automated parsing validation: 2026-11-25
+
+**95 tests passed** with Python **3.11.18** and pytest **9.2.0**. Pytest was
+installed only into a temporary isolated uv environment; no project dependency, permanent validation
+script or unrelated infrastructure was added. With that environment active,
+the executed test invocation was:
+
+```powershell
+$env:VIRTUAL_ENV = "$d6TestTemp\venv"
+$env:UV_CACHE_DIR = "$d6TestTemp\uv-cache"
+$env:PYTHONDONTWRITEBYTECODE = "1"
+uv run --no-project --active --offline python -B -m pytest tests/ingest -q -p no:cacheprovider --confcutdir=tests/ingest --basetemp "$d6TestTemp\pytest-verified"
+```
+
+`$d6TestTemp` represents the isolated environment's temporary parent directory;
+the installed uv executable was invoked by its absolute path. The final run
+returned **95 passed in 1.11s**, exit code **0**. The `--confcutdir` limits
+collection to D6 ingestion tests; `PYTHONDONTWRITEBYTECODE=1` and the disabled cache provider avoid permanent
+test artifacts. This is source-parser validation, not a D4 integration pass.
+
+Tests cover both real local synthetic files (24 rows total), supported header
+variants/reordering, cross-app rejection, missing/unknown/duplicate/ambiguous
+headers, row width, strict timestamps, malformed CSV/UTF-8, numeric errors and
+overflow, blank-versus-zero values, source index bases, deterministic records,
+Strong hints and warning, Hevy duration arithmetic and all four type mappings.
+Separate temporary inputs cover pounds/miles, hour tokens, quoted/multiline
+notes, populated supersets, optional metrics and positive-repetition failures.
+Expected source values and duration arithmetic are independently stated in
+assertions/comments; kg conversion is deliberately not implemented.
 
 ## Export specifications still [TO VERIFY]
 
@@ -230,47 +328,32 @@ missing. The inline check is not a replacement adapter or shared normalizer.
 - Canonical distance unit and conversion policy; weight normalization does not
   establish the distance convention.
 
-Unknown formats and unsupported headers must fail with shared `IngestError`.
-Detection must reject the other app and unrelated formats. The header-only
-templates are not a specification of required-column subsets.
+Final D4 adapters must report unknown formats and unsupported headers through
+shared `IngestError`. Current source parsers reject them with their local errors.
+Both detectors reject the other app and unrelated formats. The header-only
+templates do not establish vendor-required column subsets.
 
-## Implementation and test handoff
+## Remaining D4 integration and human review
 
-After David's D4 implementation is available in this checkout:
+After D4 is available locally:
 
-1. Inspect its actual models, normalization, errors, adapter directory, registration
-   and test conventions. Resolve the interface questions above with the D4 owner.
-2. Implement only the two D6 adapters and their pipeline registration. Reuse D4's
-   conversion, failed-set and date handling; leave hashing, storage and exercise
-   matching with their existing owners.
-3. Obtain team approval of the existing 12-row fixtures and their recorded
-   AI-assisted/manual-insertion provenance. Confirm Strong's unit and D4's
-   blank-field/type/index mappings. Review the documented coverage gaps without
-   regenerating the files or accessing personal exports as part of this task.
-4. Add tests under the existing ingestion test conventions:
+1. Read its actual models, normalization, errors, adapter interfaces and registry.
+   Adapt the two source parsers to those interfaces without a parallel schema.
+2. Implement canonical conversion and shared kg normalization, reconcile
+   failed/type/date handling, and translate local parse errors to `IngestError`.
+   Preserve source units and notes through the actual shared model.
+3. Register the adapters in the real ingestion pipeline and resolve Strong hint
+   forwarding, workout duration storage, canonical index and distance policies.
+   Leave hashing, deduplication, exercise matching and storage to D4.
+4. Add canonical/pipeline tests using the existing fixture expectations and D4's
+   actual conversion factor/tolerance. Issue #9 gives `225 lb = 102.0583 kg`
+   as a reference check; no new factor is defined here.
+5. Run the integrated ingestion suite through the eventual project configuration.
+   Current parser tests remain useful independent coverage.
 
-| Check | Required evidence |
-|---|---|
-| Format detection | Strong and Hevy headers select their own adapters; each rejects the other and unrelated headers. |
-| Unknown headers | Shared `IngestError` is raised rather than accepting an unsupported layout. |
-| Canonical values | A few hand-selected fixture rows have independently calculated expectations for all preserved fields, including any index-base handling. |
-| Weight handling | Strong explicit hint and ambiguous-weight behavior; Hevy kg/lbs header handling; shared source-unit retention. |
-| Hevy time and notes | Workout duration equals parsed end minus start; set duration is separate; description, exercise notes and superset IDs survive. |
-| Strong warning | Capture the required unverified-set-type warning and verify internal `normal` mapping without suppressing failed-set handling. |
-| Shared normalization | Cover zero repetitions and any confirmed failure mapping without reimplementing D4. |
-| Source representations | Exercise the reported timestamp/duration formats, Hevy source type spellings, quoted commas and observed empty fields without silently replacing blanks with zero. |
-
-Expected conversions must use D4's actual conversion factor and state the chosen
-tolerance in test comments. Issue #9 gives `225 lb = 102.0583 kg` as its reference
-check; no new factor or tolerance is specified here. Duration expectations must
-show the subtraction and conversion to seconds in comments.
-
-Once D4, dependencies and fixture approval are available, run:
-
-```powershell
-uv run --python 3.11 pytest tests/ingest
-```
-
-This is the planned command, **not a reported test pass**. No adapter tests can
-run in the current checkout. D6 remains incomplete until implementation,
-fixture approval and the required tests are available.
+Human/team work remains: approve the recorded AI-assisted fixture provenance
+against the hand-written requirement, confirm the Strong fixture's unit,
+review the conservative supported formats, and verify compatibility against
+separately authorized real exports. No real exports or personal logs were used.
+D6 is ready for review of functional parsing, but final canonical ingestion and
+issue acceptance are not complete.

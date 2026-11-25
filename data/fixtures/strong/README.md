@@ -3,7 +3,8 @@
 **synthetic, built from community headers**
 
 Status: [synthetic.csv](synthetic.csv) contains **12 data rows**, validated with
-Python 3.11.18 on **2026-11-25**. Team approval is pending. The format remains
+Python 3.11.18 on **2026-11-25**, and parsed by the implemented Strong source
+parser in the passing D6 test suite. Team approval is pending. The format remains
 **[TO VERIFY against real exports]**, unverified against real application exports.
 [header-template.csv](header-template.csv) remains a separate header-only reference.
 
@@ -60,10 +61,11 @@ duration and notes are consistent within each workout.
 
 Data-row numbers below exclude the header; CSV line numbers are one greater.
 
-## Expected values for future adapter tests
+## Source expectations and future canonical tests
 
-These expectations follow the actual source values and issue #9's field names;
-they are not output from an adapter or an instantiated replacement schema.
+These expectations follow the actual source values and issue #9's field names.
+The implemented `StrongParser` tests verify source records against these values;
+no canonical model is instantiated.
 `rpe=None` on row 11 follows D4's specified nullable RPE. `failed=True` on row 12
 follows `reps == 0`; all other rows have positive repetitions and no source
 failure marker. All Strong rows must retain internal `set_type=normal` with the
@@ -85,17 +87,18 @@ warning required by issue #11.
 | 12 | Deadlift | 3 | 110 | 0 | 10 | True |
 
 **Strong's weight unit is not declared in the CSV or confirmed fixture metadata
-[TO VERIFY].** No default unit was assigned. A future test that explicitly
-supplies `unit_hint="kg"` should expect `weight_kg` equal to the raw values above
-and `source_unit="kg"`; this is a conditional test setup, not an assertion of
-fixture provenance. A pounds-hint case must use D4's shared conversion and state
-its arithmetic and tolerance. Do not infer units from similar Hevy values.
+[TO VERIFY].** No default unit was assigned. Parser tests explicitly supply
+`unit_hint="kg"`, expecting raw `weight` equal to the values above and
+`source_unit="kg"`. This is a conditional test setup, not a declaration of the
+fixture's unit. A pounds-hint parsing test retains raw 60 as 60 lb; final
+`weight_kg` conversion and its tolerance must use D4. Parsing without a hint
+raises `StrongParseError`. Do not infer units from similar Hevy values.
 
 Preserve nonempty `Notes` as `set_note`: row 1 is `Controlled reps`, row 2 is
 `Stable tempo`, row 6 is `Controlled movement`, row 7 is `Stable tempo`, and row 12
 is `Attempt not completed`. Rows 3, 4, 5, 8, 9, 10 and 11 have blank notes;
-their empty-string/null representation awaits D4. Canonical index-base handling
-also awaits D4; the table records source indices without choosing an offset.
+the source parser preserves them as empty strings. Final canonical empty/null
+and index-base handling await D4; source indices are preserved without offset.
 
 `Distance` and `Seconds` are blank in all 12 rows. Preserve that missingness;
 do not fill it with zero or copy workout duration into per-set `duration_s`.
@@ -105,24 +108,39 @@ remain [TO VERIFY] with D4.
 ## Coverage limits and remaining work
 
 The populated fixture uses `45m` and `50m`, not the earlier proposed `1h 20m`.
-Hour-token parsing, pounds conversion, `Weight (kg)`, populated distance/set
-duration, commas or embedded quotes in notes, and invalid-input rejection are
-not exercised by these rows. Blank unused metrics differ from S1's reported
+These rows alone do not exercise hour tokens, pounds hints, `Weight (kg)`,
+populated distance/set duration, commas or embedded quotes in notes, or invalid
+input. Isolated temporary test inputs now cover those source-parsing cases,
+including multiline notes, BOMs and header reordering. Weight conversion
+remains D4's responsibility. Blank unused metrics differ from S1's reported
 zero convention and remain subject to team/source-format review. These are
 coverage/conformance limitations, not malformed CSV records; the file was kept
-unchanged. Follow [the D6 handoff](../../../docs/d6-strong-hevy-adapters.md) after
-D4 and team approval are available.
+unchanged. See [the D6 implementation and handoff](../../../docs/d6-strong-hevy-adapters.md)
+for the private parsing API, exact supported formats and remaining integration.
 
 Strong source set-type encoding remains [TO VERIFY]. Do not manufacture export
 markers for warm-up, failure or drop sets. Issue #11 requires the adapter to
 treat sets as internal `normal` and log a warning; shared failed-set handling
-still applies independently.
+still applies independently. The source parser exposes `mapped_set_type="normal"`,
+detects `reps == 0` and emits one warning per successful parse. It does not infer
+Strong set-type markers, normalize weights, assign canonical IDs or register
+itself in a pipeline.
+
+## Automated test result
+
+The D6 ingestion suite passed **95 tests** under Python **3.11.18** in an
+isolated temporary uv environment. Tests read this exact 12-row file without
+modification; extra cases are programmatic inputs outside the fixture. Local
+parser failures currently raise `StrongParseError`, not shared `IngestError`.
+See the D6 document for the command and final run result.
 
 ## Completion status
 
 - [x] Exactly 12 populated rows read and validated with Python 3.11.
 - [x] AI-assisted values and manual insertion by Filip recorded as user-reported provenance.
-- [x] Row-level future expectations and duration arithmetic documented without adapter output.
+- [x] Row-level source expectations and future canonical expectations documented.
+- [x] Source detection, both unit hints, explicit kg header, unknown-header rejection and warning tests executed.
+- [x] All 12 source records, missing RPE, zero-repetition failure and duration arithmetic tested.
 - [ ] Team approves the fixture/provenance and confirms the Strong weight unit.
 - [ ] D4 available; canonical expectations and remaining coverage reviewed.
-- [ ] Adapter detection, unit hint, unknown-header and warning tests executed.
+- [ ] Canonical conversion, shared error translation and pipeline registration tested.
