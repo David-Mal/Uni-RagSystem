@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from src.schemas import (
     EXERCISE_IDS_CONTEXT_KEY,
     SCHEMA_VERSION,
+    VALUE_ID_PATTERN,
     Claim,
     EvidenceLevel,
     ExtractionResult,
@@ -23,6 +24,7 @@ from src.schemas import (
     at_least,
     extraction_json_schema,
     max_level,
+    read_triage_level,
 )
 from src.schemas.json_schema import EXPORTED_MODELS, export_schemas, render_schema
 
@@ -232,3 +234,87 @@ def test_committed_schemas_are_up_to_date() -> None:
     for stem, model in EXPORTED_MODELS.items():
         committed = (REPO_ROOT / "schemas" / f"{stem}.json").read_text(encoding="utf-8")
         assert committed == render_schema(model), f"schemas/{stem}.json is stale: run scripts/export_schemas.py"
+
+
+# ---------- review #69: required keys, strict numbers, minor fixes ----------
+
+ALL_KEYS = ["exercise_id", "kinematic_observation", "load", "reps", "outcome", "rpe", "triage_level"]
+
+
+def test_cd_schema_requires_all_seven_keys_but_allows_null() -> None:
+    schema = extraction_json_schema(["Barbell_Squat"])
+    assert schema["required"] == ALL_KEYS
+    for key in ("load", "reps", "rpe"):
+        missing = {k: v for k, v in PLAN_EXAMPLE.items() if k != key}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(missing, schema)
+        jsonschema.validate({**PLAN_EXAMPLE, "exercise_id": "unknown", key: None}, schema)
+
+
+@pytest.mark.parametrize("key", ["load", "reps", "rpe"])
+def test_model_requires_nullable_keys(key: str) -> None:
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate({k: v for k, v in PLAN_EXAMPLE.items() if k != key})
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"load": {"value": float("inf"), "unit": "kg"}},
+        {"load": {"value": float("nan"), "unit": "kg"}},
+        {"load": {"value": True, "unit": "kg"}},
+        {"load": {"value": "80", "unit": "kg"}},
+        {"rpe": True},
+        {"rpe": "8"},
+        {"rpe": float("nan")},
+        {"reps": True},
+        {"reps": "5"},
+        {"reps": 5.0},
+    ],
+)
+def test_numbers_are_strict(patch: dict) -> None:
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate({**PLAN_EXAMPLE, **patch})
+
+
+def test_json_overflow_is_rejected_and_ints_are_accepted_as_floats() -> None:
+    bad = json.dumps(PLAN_EXAMPLE).replace('"value": 80', '"value": 1e999')
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate_json(bad)
+    ok = ExtractionResult.model_validate_json(json.dumps(PLAN_EXAMPLE))  # value 80, rpe 8 written as ints
+    assert ok.load is not None and ok.load.value == 80.0 and ok.rpe == 8.0
+    assert ExtractionResult.model_validate_json(ok.model_dump_json()) == ok
+
+
+def test_string_id_set_is_rejected_not_matched_as_substring() -> None:
+    with pytest.raises((TypeError, ValidationError)):
+        ExtractionResult.model_validate(
+            {**PLAN_EXAMPLE, "exercise_id": "Squat"}, context={EXERCISE_IDS_CONTEXT_KEY: "Barbell_Squat"}
+        )
+    with pytest.raises(TypeError):
+        extraction_json_schema("Barbell_Squat")
+
+
+@pytest.mark.parametrize("value", ["Unknown", "UNKNOWN"])
+def test_unknown_must_be_lowercase(value: str) -> None:
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate({**PLAN_EXAMPLE, "exercise_id": value})
+
+
+def test_claim_schema_carries_id_patterns_and_rejects_blank_text() -> None:
+    claim = json.loads(render_schema(Claim))
+    assert claim["properties"]["numbers"]["items"]["pattern"] == VALUE_ID_PATTERN
+    assert "pattern" in claim["properties"]["citations"]["items"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**VALID_CLAIM, "numbers": ["e1rm"]}, claim)
+    with pytest.raises(ValidationError):
+        Claim.model_validate({**VALID_CLAIM, "text": "   "})
+
+
+def test_read_triage_level_survives_other_invalid_fields() -> None:
+    raw = {**PLAN_EXAMPLE, "triage_level": "red", "rpe": 11}
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate(raw)
+    assert read_triage_level(raw) is TriageLevel.RED
+    assert read_triage_level({"triage_level": "orange"}) is None
+    assert read_triage_level("red") is None
