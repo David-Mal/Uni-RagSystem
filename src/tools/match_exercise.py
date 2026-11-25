@@ -1,8 +1,11 @@
 """Tool: ``match_exercise_rag`` — 4-stage exercise name resolution cascade (issue M1, #32).
 
 Stages:
-1. Alias dictionary lookup (``data/exercises/aliases.yaml``) on normalized names.
-2. Fuzzy matching (rapidfuzz ``token_set_ratio``) against exercise names and aliases.
+1. Alias dictionary (``data/exercises/aliases.yaml``) or exact exercise name, word order ignored. Text in parentheses is
+   part of the name; it is dropped only if it is nothing but equipment that the matched exercise really uses.
+2. Fuzzy matching (rapidfuzz) against exercise names and aliases. ``token_set_ratio`` alone is 100 for any subset
+   ("Row" in every row), so ``token_sort_ratio`` must be high too, the equipment must agree, and the best candidate must
+   be clearly ahead of the next one.
 3. Retrieval over free-exercise-db documents via the ``Retriever`` protocol (M5).
 4. Low confidence -> ``exercise_id = "unknown"`` (never guess).
 """
@@ -20,7 +23,7 @@ from rapidfuzz import fuzz
 
 from src.exercises.loader import Exercise, load_exercises
 
-TOOL_VERSION = "match_exercise_rag-0.1.0"
+TOOL_VERSION = "match_exercise_rag-1.0.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ALIASES_PATH = REPO_ROOT / "data" / "exercises" / "aliases.yaml"
@@ -66,11 +69,62 @@ class StubRetriever:
         return []
 
 
+EQUIPMENT_WORDS: dict[str, str] = {
+    "barbell": "barbell", "bb": "barbell", "dumbbell": "dumbbell", "dumbbells": "dumbbell", "db": "dumbbell",
+    "cable": "cable", "machine": "machine", "smith": "machine", "lever": "machine", "kettlebell": "kettlebells",
+    "kb": "kettlebells", "band": "bands", "bands": "bands", "bodyweight": "body only", "bw": "body only",
+}  # fmt: skip
+"""Words in app names -> ``equipment`` values of free-exercise-db."""
+
+_COMPATIBLE = {("barbell", "e-z curl bar")}
+
+
+def _clean(text: str) -> str:
+    return _SPACE_RE.sub(" ", _PUNCT_RE.sub(" ", text.lower())).strip()
+
+
 def normalize_exercise_name(raw: str) -> str:
     """Lowercase, strip parenthetical equipment/modifiers, strip punctuation, collapse spaces."""
-    without_parens = _PARENS_RE.sub(" ", raw.lower())
-    without_punct = _PUNCT_RE.sub(" ", without_parens)
-    return _SPACE_RE.sub(" ", without_punct).strip()
+    return _clean(_PARENS_RE.sub(" ", raw))
+
+
+def normalize_full_name(raw: str) -> str:
+    """Like ``normalize_exercise_name``, but the words in parentheses are kept."""
+    return _clean(raw)
+
+
+def _key(normalized: str) -> tuple[str, ...]:
+    """Word-order independent key, so "Bench Press (Dumbbell)" equals "Dumbbell Bench Press"."""
+    return tuple(sorted(normalized.split()))
+
+
+def _equipment(normalized: str) -> set[str]:
+    return {EQUIPMENT_WORDS[w] for w in normalized.split() if w in EQUIPMENT_WORDS}
+
+
+def _equipment_agrees(named: set[str], exercise: Exercise | None) -> bool:
+    """False if the name mentions equipment and the exercise uses something else."""
+    if not named or exercise is None or exercise.equipment is None:
+        return True
+    return any(n == exercise.equipment or (n, exercise.equipment) in _COMPATIBLE for n in named)
+
+
+def _adds_equipment(query: str, target: str) -> bool:
+    """True if ``target`` names equipment that ``query`` does not (typos such as "Barbel" count as named)."""
+    words = query.split()
+    return any(
+        w in EQUIPMENT_WORDS
+        and EQUIPMENT_WORDS[w] not in _equipment(query)
+        and not any(fuzz.ratio(w, q) >= 85 for q in words)
+        for w in target.split()
+    )
+
+
+def _droppable_parens(raw: str) -> bool:
+    """True if every word in parentheses names equipment."""
+    words = " ".join(_PARENS_RE.findall(raw.lower()))
+    inside = _clean(words).split()
+    return bool(inside) and all(w in EQUIPMENT_WORDS for w in inside)
 
 
 def load_matching_config(path: Path | str | None = None) -> dict[str, Any]:
@@ -80,6 +134,8 @@ def load_matching_config(path: Path | str | None = None) -> dict[str, Any]:
         data = yaml.safe_load(fh) or {}
     return {
         "fuzzy_threshold": float(data.get("fuzzy_threshold", 90.0)),
+        "fuzzy_min_sort": float(data.get("fuzzy_min_sort", 80.0)),
+        "fuzzy_margin": float(data.get("fuzzy_margin", 3.0)),
         "retrieval_threshold": float(data.get("retrieval_threshold", 0.65)),
         "top_k": int(data.get("top_k", 5)),
     }
@@ -101,7 +157,9 @@ def load_aliases(
     for alias, ex_id in raw_aliases.items():
         if valid_ids is not None and ex_id not in valid_ids:
             raise ValueError(f"Alias {alias!r} maps to unknown exercise_id {ex_id!r}")
-        key = normalize_exercise_name(str(alias))
+        key = normalize_full_name(str(alias))
+        if normalized.get(key, ex_id) != ex_id:
+            raise ValueError(f"Alias {alias!r} maps to both {normalized[key]!r} and {ex_id!r}")
         if key:
             normalized[key] = str(ex_id)
     return normalized
@@ -117,25 +175,28 @@ def match_exercise_rag(
 ) -> MatchResult:
     """Resolve a raw exercise name string to a free-exercise-db ``exercise_id`` or ``"unknown"``."""
     ex_map = exercises if exercises is not None else load_exercises()
-    cfg = dict(load_matching_config()) if config is None else {
-        "fuzzy_threshold": float(config.get("fuzzy_threshold", 90.0)),
-        "retrieval_threshold": float(config.get("retrieval_threshold", 0.65)),
-        "top_k": int(config.get("top_k", 5)),
-    }
+    cfg = {**load_matching_config(), **(config or {})}
     alias_map = (
-        {normalize_exercise_name(k): v for k, v in aliases.items() if normalize_exercise_name(k)}
+        {normalize_full_name(k): v for k, v in aliases.items() if normalize_full_name(k)}
         if aliases is not None
         else load_aliases(exercises=ex_map)
     )
     active_retriever: Retriever = retriever if retriever is not None else StubRetriever()
 
-    norm_query = normalize_exercise_name(name)
+    norm_query = normalize_full_name(name)
     if not norm_query:
         return MatchResult(exercise_id="unknown", stage="unknown", score=0.0, candidates=[])
+    named_equipment = _equipment(norm_query)
 
-    # Stage 1: Exact normalized alias dictionary lookup (or exact canonical exercise name)
-    if norm_query in alias_map:
-        matched_id = alias_map[norm_query]
+    # Stage 1: alias or exact exercise name, word order ignored. Aliases win over names.
+    exact: dict[tuple[str, ...], str] = {_key(normalize_full_name(ex.name)): i for i, ex in ex_map.items()}
+    exact.update({_key(alias): i for alias, i in alias_map.items()})
+    matched_id = exact.get(_key(norm_query))
+    if matched_id is None and _droppable_parens(name):
+        stripped = exact.get(_key(normalize_exercise_name(name)))
+        if stripped is not None and _equipment_agrees(named_equipment, ex_map.get(stripped)):
+            matched_id = stripped
+    if matched_id is not None:
         matched_name = ex_map[matched_id].name if matched_id in ex_map else None
         return MatchResult(
             exercise_id=matched_id,
@@ -144,56 +205,36 @@ def match_exercise_rag(
             candidates=[Candidate(exercise_id=matched_id, score=100.0, name=matched_name)],
         )
 
-    for ex_id, ex in ex_map.items():
-        if normalize_exercise_name(ex.name) == norm_query:
+    # Stage 2: fuzzy matching against exercise names and aliases
+    top_k = int(cfg["top_k"])
+    best: dict[str, tuple[float, float]] = {}  # exercise_id -> (sort ratio, set ratio)
+    targets = [(normalize_full_name(ex.name), i) for i, ex in ex_map.items()]
+    targets += list(alias_map.items())
+    for target, ex_id in targets:
+        if _adds_equipment(norm_query, target) or not _equipment_agrees(named_equipment, ex_map.get(ex_id)):
+            continue
+        set_score = float(fuzz.token_set_ratio(norm_query, target))
+        sort_score = float(fuzz.token_sort_ratio(norm_query, target))
+        best[ex_id] = max(best.get(ex_id, (-1.0, -1.0)), (sort_score, set_score))
+    ranked = sorted(best.items(), key=lambda item: (-item[1][0], -item[1][1], item[0]))[:top_k]
+    fuzzy_candidates = [
+        Candidate(exercise_id=i, score=round(set_score, 4), name=ex_map[i].name if i in ex_map else None)
+        for i, (_, set_score) in ranked
+    ]
+    if ranked:
+        top_id, (top_sort, top_set) = ranked[0]
+        runner_up = ranked[1][1][0] if len(ranked) > 1 else 0.0
+        if (
+            top_set >= float(cfg["fuzzy_threshold"])
+            and top_sort >= float(cfg["fuzzy_min_sort"])
+            and top_sort - runner_up >= float(cfg["fuzzy_margin"])
+        ):
             return MatchResult(
-                exercise_id=ex_id,
-                stage="alias",
-                score=100.0,
-                candidates=[Candidate(exercise_id=ex_id, score=100.0, name=ex.name)],
+                exercise_id=top_id, stage="fuzzy", score=round(top_set, 4), candidates=fuzzy_candidates
             )
 
-    # Stage 2: Fuzzy matching with rapidfuzz token_set_ratio against exercise names and aliases
-    fuzzy_threshold = cfg["fuzzy_threshold"]
-    top_k = cfg["top_k"]
-
-    best_score_by_id: dict[str, float] = {}
-    for ex_id, ex in ex_map.items():
-        norm_target = normalize_exercise_name(ex.name)
-        score = float(fuzz.token_set_ratio(norm_query, norm_target))
-        if score > best_score_by_id.get(ex_id, -1.0):
-            best_score_by_id[ex_id] = score
-
-    for norm_alias, ex_id in alias_map.items():
-        score = float(fuzz.token_set_ratio(norm_query, norm_alias))
-        if score > best_score_by_id.get(ex_id, -1.0):
-            best_score_by_id[ex_id] = score
-
-    ranked_fuzzy = sorted(
-        best_score_by_id.items(),
-        key=lambda item: (-item[1], item[0]),
-    )[:top_k]
-
-    fuzzy_candidates = [
-        Candidate(
-            exercise_id=ex_id,
-            score=round(score, 4),
-            name=ex_map[ex_id].name if ex_id in ex_map else None,
-        )
-        for ex_id, score in ranked_fuzzy
-    ]
-
-    if fuzzy_candidates and fuzzy_candidates[0].score >= fuzzy_threshold:
-        top = fuzzy_candidates[0]
-        return MatchResult(
-            exercise_id=top.exercise_id,
-            stage="fuzzy",
-            score=top.score,
-            candidates=fuzzy_candidates,
-        )
-
     # Stage 3: Hybrid retrieval over exercise documents (M5)
-    retrieval_threshold = cfg["retrieval_threshold"]
+    retrieval_threshold = float(cfg["retrieval_threshold"])
     retrieved = active_retriever.retrieve(name, k=top_k)
     if retrieved:
         top_ret = retrieved[0]
@@ -214,3 +255,8 @@ def match_exercise_rag(
         score=best_score,
         candidates=best_candidates,
     )
+
+
+def match_exercise_id(name: str) -> str:
+    """Exercise id or ``"unknown"``: the ``matcher`` argument of ``ingest_workout_log`` (stages 1-2)."""
+    return match_exercise_rag(name).exercise_id

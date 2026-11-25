@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import csv
+from pathlib import Path
+
 import pytest
 
 from src.exercises.loader import load_exercises
 from src.tools.match_exercise import (
     Candidate,
     load_aliases,
+    match_exercise_id,
     match_exercise_rag,
     normalize_exercise_name,
 )
@@ -128,3 +132,52 @@ def test_empty_string_returns_unknown() -> None:
     assert res.exercise_id == "unknown"
     assert res.stage == "unknown"
     assert res.score == 0.0
+
+
+@pytest.mark.parametrize("name", ["Curl", "Row", "Press", "Triceps Extension", "Leg Curl", "Incline Row", "Dumbbell Row"])
+def test_a_fragment_of_many_names_is_unknown(name: str) -> None:
+    # token_set_ratio is 100 for each of these
+    assert match_exercise_rag(name).exercise_id == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Bench Press (Barbell)", "Barbell_Bench_Press_-_Medium_Grip"),
+        ("Bench Press (Dumbbell)", "Dumbbell_Bench_Press"),
+        ("Bench Press (Machine)", "Machine_Bench_Press"),
+        ("Squat (Barbell)", "Barbell_Squat"),
+        ("Deadlift (Barbell)", "Barbell_Deadlift"),
+        ("Deadlift (Trap Bar)", "Trap_Bar_Deadlift"),
+        ("Squat (Smith Machine)", "Smith_Machine_Squat"),
+        ("Shoulder Press (Dumbbell)", "Dumbbell_Shoulder_Press"),
+        ("Barbel Squat", "Barbell_Squat"),
+        ("Dumbell Shrug", "Dumbbell_Shrug"),
+    ],
+)
+def test_equipment_in_parentheses_counts(name: str, expected: str) -> None:
+    assert match_exercise_rag(name).exercise_id == expected
+
+
+@pytest.mark.parametrize("name", ["Deadlift (Suitcase)", "Bench Press (Band)", "Squat (Kettlebell)"])
+def test_parentheses_are_never_dropped_to_force_a_match(name: str) -> None:
+    assert match_exercise_rag(name).exercise_id not in {
+        "Barbell_Deadlift", "Barbell_Squat", "Barbell_Bench_Press_-_Medium_Grip",
+    }  # fmt: skip
+
+
+def test_conflicting_aliases_are_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "a.yaml"
+    path.write_text('aliases:\n  "Squat": Barbell_Squat\n  "squat!": Leg_Press\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="maps to both"):
+        load_aliases(path)
+
+
+def test_every_name_of_the_real_exports() -> None:
+    names = set()
+    for who in ("david", "fineas"):
+        path = Path(__file__).resolve().parents[2] / "data" / "fixtures" / "opengym" / f"{who}_anonymized.csv"
+        with path.open(encoding="utf-8-sig", newline="") as stream:
+            names |= {row["exercise"] for row in csv.DictReader(stream)}
+    unknown = {n for n in names if match_exercise_id(n) == "unknown"}
+    assert len(names) == 41 and unknown == {"Cable Leaning Lateral Raise"}
