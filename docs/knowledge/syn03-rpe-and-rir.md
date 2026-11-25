@@ -39,7 +39,7 @@ exercise identity, repetition counts and rating coverage visible when comparing
 sessions. Missing ratings cannot be replaced by assumed effort, and changing the
 task can weaken comparability even when the external load looks similar.
 
-Section 3.4 illustrates drift per week. Exact aggregation and any decision cutoff
-remain [TO VERIFY] with the numerical specification owner.
+Drift is the least-squares slope of session mean RPE per week; the steps and the
+decision band are fixed in [indicator specification, section 3](../indicator-spec.md).
 If the supplied records cannot support a comparable series, explain that drift
 was not assessed rather than asserting fatigue from sparse entries.

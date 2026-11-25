@@ -38,8 +38,8 @@ effort records can limit what comparisons support. Keep these logging
 limitations separate from the overload hypothesis rather than treating absent
 records as evidence of absent training.
 
-The minimum meaningful change and plateau duration are
-[TO VERIFY] with the indicator specification; this document creates neither.
+The trend band and the analysis window are fixed in
+[indicator specification, sections 1 and 2](../indicator-spec.md); this document creates neither.
 Describe the observed time window and inputs, retain uncertainty, and abstain
 from unsupported explanations. The cited experiment concerns group outcomes
 under its own protocol, not a deterministic explanation for an individual's
