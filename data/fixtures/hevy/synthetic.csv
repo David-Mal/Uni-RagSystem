@@ -1,0 +1,13 @@
+"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"
+Upper Body,"10 Nov 2026, 18:00","10 Nov 2026, 18:45",Evening workout,Bench Press,,Warmup set,0,warmup,20,15,,,5
+Upper Body,"10 Nov 2026, 18:00","10 Nov 2026, 18:45",Evening workout,Bench Press,,Controlled reps,1,normal,60,10,,,7
+Upper Body,"10 Nov 2026, 18:00","10 Nov 2026, 18:45",Evening workout,Bench Press,,,2,normal,65,8,,,8
+Upper Body,"10 Nov 2026, 18:00","10 Nov 2026, 18:45",Evening workout,Barbell Row,,,0,normal,40,12,,,7
+Upper Body,"10 Nov 2026, 18:00","10 Nov 2026, 18:45",Evening workout,Barbell Row,,,1,normal,45,10,,,8
+Upper Body,"10 Nov 2026, 18:00","10 Nov 2026, 18:45",Evening workout,Barbell Row,,Reduced load,2,dropset,30,12,,,9
+Lower Body,"12 Nov 2026, 17:00","12 Nov 2026, 17:50",Afternoon workout,Squat,,Warmup set,0,warmup,40,12,,,5
+Lower Body,"12 Nov 2026, 17:00","12 Nov 2026, 17:50",Afternoon workout,Squat,,,1,normal,70,10,,,7
+Lower Body,"12 Nov 2026, 17:00","12 Nov 2026, 17:50",Afternoon workout,Squat,,,2,normal,80,8,,,8
+Lower Body,"12 Nov 2026, 17:00","12 Nov 2026, 17:50",Afternoon workout,Deadlift,,,0,normal,80,8,,,7
+Lower Body,"12 Nov 2026, 17:00","12 Nov 2026, 17:50",Afternoon workout,Deadlift,,,1,normal,90,6,,,
+Lower Body,"12 Nov 2026, 17:00","12 Nov 2026, 17:50",Afternoon workout,Deadlift,,Attempt not completed,2,failure,110,0,,,10
