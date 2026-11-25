@@ -1,0 +1,3 @@
+# Files whose hash is recorded in reports: same bytes on every OS.
+*.jsonl text eol=lf
+data/manifests/* text eol=lf
