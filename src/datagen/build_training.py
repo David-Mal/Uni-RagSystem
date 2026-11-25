@@ -76,6 +76,7 @@ def build_split(
     registry: Partition,
     seen_texts: set[str],
     drop_ids: set[str],
+    consumer: str = "extractor",
 ) -> tuple[SplitResult, int]:
     """Generate one split until every class reaches its target. Returns the split and the next free seed.
 
@@ -93,7 +94,7 @@ def build_split(
                 raise RuntimeError(f"{name}/{level}: cannot reach target after {attempts} attempts (dedup)")
             if not lo <= seed <= hi:
                 raise PoolError(f"{name}: ran out of {pool} seeds at {seed}")
-            item = generate_item(level, seed, pool, registry)
+            item = generate_item(level, seed, pool, registry, consumer=consumer)
             seed += 1
             if item["item_id"] in drop_ids:
                 result.dropped_by_audit.append(item["item_id"])

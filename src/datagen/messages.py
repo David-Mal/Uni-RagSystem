@@ -41,7 +41,7 @@ GENERATOR_NAME = "template"
 GENERATOR_VERSION = "v0"
 GENERATOR = f"{GENERATOR_NAME}-{GENERATOR_VERSION}"
 ALLOWED_POOLS = ("train", "dev")
-CONSUMER = "extractor"
+CONSUMERS = ("extractor", "classifier")
 
 # Sampling probabilities (documented in docs/datagen-messages.md)
 P_UNKNOWN_EXERCISE = 0.10  # half unresolvable phrase, half no exercise mentioned
@@ -93,12 +93,12 @@ def _weighted(rng: random.Random, weights: Mapping[Any, float]) -> Any:
     return rng.choices(keys, weights=[weights[k] for k in keys], k=1)[0]
 
 
-def _families_for(pool: str, registry: Partition, hard_negative: bool) -> list[PhrasingFamily]:
-    """Extractor families of this module that the manifest puts in ``pool``. Never returns a golden-pool family."""
+def _families_for(pool: str, registry: Partition, hard_negative: bool, consumer: str) -> list[PhrasingFamily]:
+    """Families of ``consumer`` (here and in the manifest) that are in ``pool``. Never returns a golden-pool family."""
     consumers = {f.id: f.consumer for entries in registry.phrasing_families.values() for f in entries}
     out = []
     for fam in FAMILIES.values():
-        if (fam.hard_negative is not None) != hard_negative:
+        if fam.consumer != consumer or (fam.hard_negative is not None) != hard_negative:
             continue
         try:
             actual = registry.pool_of("phrasing_families", fam.family_id)
@@ -106,7 +106,7 @@ def _families_for(pool: str, registry: Partition, hard_negative: bool) -> list[P
             continue
         if actual == "golden":
             raise PoolError(f"phrasing family {fam.family_id!r} is in the golden pool; generator refuses")
-        if actual == pool and consumers[fam.family_id] == CONSUMER:
+        if actual == pool and consumers[fam.family_id] == consumer:
             out.append(fam)
     return out
 
@@ -138,12 +138,20 @@ def _symptom(
             return pick(clauses.figurative)
         if kind == "negated":
             return pick(clauses.negated)
+        if kind == "soreness":
+            return pick(clauses.soreness_ok)
+        if kind == "past_pain":
+            return pick(clauses.past_pain_resolved)
         return pick(clauses.green_positive) if allow_positive else ""
     if level is TriageLevel.YELLOW:
         if kind == "negated":
             return pick(clauses.negated_red_plus_mild)
         if kind == "figurative":
             return f"{pick(clauses.figurative)}, and {pick(clauses.yellow)}"
+        if kind == "soreness":
+            return f"{pick(clauses.soreness_ok)}, but also {pick(clauses.yellow)}"
+        if kind == "past_pain":
+            return f"{pick(clauses.past_pain_resolved)}, but now {pick(clauses.yellow)}"
         return pick(clauses.yellow)
     red = pick(clauses.red_systemic) if rng.random() < P_RED_SYSTEMIC else pick(clauses.red)
     # In a hard-negative style a negated or figurative clause comes first, so neither it nor the style means "not red".
@@ -151,6 +159,10 @@ def _symptom(
         return f"{pick(clauses.figurative)}, but {red}"
     if kind == "negated":
         return f"{pick(clauses.red_distractor)}, but {red}"
+    if kind == "soreness":
+        return f"{pick(clauses.soreness_ok)}, but {red}"
+    if kind == "past_pain":
+        return f"{pick(clauses.past_pain_resolved)}, but now {red}"
     return red
 
 
@@ -170,16 +182,29 @@ def _kinematic_options(
 
 
 def generate_item(
-    level: TriageLevel, seed: int, pool: str, registry: Partition, paraphraser: Paraphraser | None = None
+    level: TriageLevel,
+    seed: int,
+    pool: str,
+    registry: Partition,
+    paraphraser: Paraphraser | None = None,
+    consumer: str = "extractor",
 ) -> dict[str, Any]:
-    """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation."""
+    """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation.
+
+    ``consumer`` selects the family set, as in the P1 manifest: ``extractor`` (default) or ``classifier`` (F8).
+    """
     if pool not in ALLOWED_POOLS:
         raise PoolError(f"generator only writes pools {ALLOWED_POOLS}, got {pool!r}")
+    if consumer not in CONSUMERS:
+        raise ValueError(f"consumer must be one of {CONSUMERS}, got {consumer!r}")
     registry.assert_in_pool(pool, seed=seed)
-    rng = random.Random(f"{GENERATOR}|{seed}|{level.value}")
+    key = f"{GENERATOR}|{seed}|{level.value}"
+    if consumer != "extractor":  # the extractor stream stays unchanged so its pinned items hold
+        key = f"{GENERATOR}|{consumer}|{seed}|{level.value}"
+    rng = random.Random(key)
 
     hard_negative = rng.random() < P_HARD_NEGATIVE[level]
-    families = _families_for(pool, registry, hard_negative)
+    families = _families_for(pool, registry, hard_negative, consumer)
     if not families:
         kind = "hard-negative" if hard_negative else "regular"
         raise PoolError(f"no {kind} phrasing family of this generator is in the {pool!r} pool of the manifest")
@@ -252,6 +277,8 @@ def generate_item(
         kinematic=kin_phrase,
         symptom=symptom,
         extra="",
+        level=level.value,
+        part=part,
     )
     text = family.render(slots, rng).strip()
     paraphraser_name = None
