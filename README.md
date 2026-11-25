@@ -13,7 +13,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then, fro
 or Linux):
 
 ```
-uv sync
+uv sync --group rag
 uv run pytest
 uv run ruff check
 ```
@@ -22,7 +22,8 @@ uv run ruff check
 
 | Group | Install | Contents |
 |---|---|---|
-| `rag` | `uv sync --group rag` | Chroma, BM25, sentence-transformers |
+| `rag` | `uv sync --group rag` | Chroma, BM25 (tests of `src/rag` need it) |
+| `embed` | `uv sync --group rag --group embed` | sentence-transformers, to build the real index: `uv run python -m src.rag.build` |
 | `mcp` | `uv sync --group mcp` | Official MCP Python SDK |
 | `ml` | `uv sync --group ml` | transformers, PEFT, TRL, bitsandbytes, Outlines (needs a GPU, never installed in CI) |
 
