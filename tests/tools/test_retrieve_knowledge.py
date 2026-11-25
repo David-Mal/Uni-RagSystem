@@ -10,8 +10,9 @@ from src.rag.bm25 import BM25Index
 from src.rag.build import build_index
 from src.rag.retrieve import HybridRetriever
 from src.rag.store import ChromaVectorStore, HashEmbedder
-from src.tools._common_provisional import ToolError
-from src.tools.retrieve_knowledge import KnowledgeResult, retrieve_knowledge
+from src.schemas import HypothesisLabel
+from src.tools.common import ToolError
+from src.tools.retrieve_knowledge import KnowledgeResult, load_retrieval_filter_config, retrieve_knowledge
 
 TEST_KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "data" / "knowledge"
 
@@ -40,6 +41,12 @@ def test_retriever(tmp_path: Path) -> HybridRetriever:
         "my lower back hurts after deadlift",
         "hamstring strain treatment",
         "swelling around the elbow joint",
+        "achy elbow on bench",
+        "soreness and training volume",
+        "stiff back warm up",
+        "pins and needles in the hand",
+        "felt light-headed after a set",
+        "my vision went dark",
     ],
 )
 def test_symptom_pain_injury_queries_are_rejected(
@@ -124,3 +131,41 @@ def test_red_gate_empty_allowed_exercises_returns_nothing(
     )
     assert isinstance(res, KnowledgeResult)
     assert res.chunks == []
+
+
+@pytest.mark.parametrize("query", ["squats RPE progression", "SQUAT volume", "knees and progression", "barbell squat"])
+def test_plural_and_case_do_not_bypass_the_exclusion(test_retriever: HybridRetriever, query: str) -> None:
+    res = retrieve_knowledge(
+        query=query,
+        allowed_exercise_ids=["Barbell_Bench_Press_-_Medium_Grip"],
+        allowed_hypotheses=[h.value for h in HypothesisLabel],
+        excluded_exercise_ids=["Barbell_Squat"],
+        retriever=test_retriever,
+    )
+    assert isinstance(res, KnowledgeResult) and res.chunks == []
+
+
+def test_chunks_of_exercises_outside_the_allowed_set_are_never_returned(test_retriever: HybridRetriever) -> None:
+    # Also when the caller does not pass the excluded list
+    res = retrieve_knowledge(
+        query="tracking RPE across sessions at comparable load",
+        allowed_exercise_ids=["Barbell_Bench_Press_-_Medium_Grip"],
+        allowed_hypotheses=[h.value for h in HypothesisLabel],
+        retriever=test_retriever,
+    )
+    assert isinstance(res, KnowledgeResult)
+    assert all(c.chunk_id != "syn_squat#c01" for c in res.chunks)
+
+
+def test_every_hypothesis_has_topics() -> None:
+    cfg = load_retrieval_filter_config()
+    assert set(cfg["hypothesis_to_topic_tags"]) == {h.value for h in HypothesisLabel}
+
+
+def test_missing_or_empty_filter_is_an_error(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_retrieval_filter_config(tmp_path / "nope.yaml")
+    path = tmp_path / "f.yaml"
+    path.write_text("rejected_patterns: []\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="empty"):
+        load_retrieval_filter_config(path)

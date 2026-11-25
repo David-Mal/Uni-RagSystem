@@ -1,8 +1,8 @@
 """Tool: ``retrieve_knowledge`` (issue M6, #37; plan §5.4, §5.7).
 
 Enforces the knowledge-retrieval boundary:
-1. Rejects symptom/pain/injury queries via regex rule filter (``configs/retrieval_filter.yaml``)
-   returning ``ToolError(code="rejected_query")``.
+1. Rejects symptom/pain/injury queries, using the filter in ``configs/retrieval_filter.yaml`` **and** the safety-gate
+   rules, returning ``ToolError(code="rejected_query")``.
 2. Enforces orchestrator-supplied ``allowed_exercise_ids`` and ``allowed_hypotheses``:
    - When ``allowed_exercise_ids`` is empty (red gate), returns empty ``KnowledgeResult(chunks=[])``.
    - Only chunks whose ``topic_tags`` map to ``allowed_hypotheses`` are returned.
@@ -23,10 +23,12 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
+from src.gate.rules import assess_text
 from src.rag.retrieve import HybridRetriever, RetrievalMode
-from src.tools._common_provisional import ToolError
+from src.schemas import TriageLevel
+from src.tools.common import ToolError
 
-TOOL_VERSION = "retrieve_knowledge-0.1.0"
+TOOL_VERSION = "retrieve_knowledge-1.0.0"
 
 TOOL_DESCRIPTION = (
     "Retrieve cited training-science synthesis chunks for allowed hypotheses and exercises. "
@@ -39,16 +41,8 @@ TOOL_DESCRIPTION = (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FILTER_CONFIG = REPO_ROOT / "configs" / "retrieval_filter.yaml"
-
-DEFAULT_HYPOTHESIS_TO_TAGS: dict[str, list[str]] = {
-    "insufficient_weekly_volume": ["volume"],
-    "fatigue_accumulation": ["rpe", "fatigue_load"],
-    "stagnant_load_progression": ["progression", "intensity"],
-    "load_spike": ["load_monitoring", "fatigue_load"],
-    "inconsistent_frequency": ["frequency"],
-    "logging_quality_issue": ["logging"],
-    "confounder_present": ["confounders"],
-}
+TOPICS_CONFIG = REPO_ROOT / "configs" / "hypothesis_topics.yaml"
+"""Shared with the output verifier, so retrieval and verification cannot drift apart."""
 
 # Joint / body-part terms commonly appearing in yellow-gate symptom notes
 _BODY_PART_TERMS: frozenset[str] = frozenset(
@@ -95,14 +89,13 @@ class KnowledgeResult(BaseModel):
 def load_retrieval_filter_config(path: Path | str | None = None) -> dict[str, Any]:
     """Load rejected regex patterns and hypothesis->tag mapping from YAML."""
     target = Path(path) if path is not None else DEFAULT_FILTER_CONFIG
-    raw: dict[str, Any] = {}
-    if target.exists():
-        raw = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+    raw = yaml.safe_load(target.read_text(encoding="utf-8"))
+    patterns = list(raw["rejected_patterns"])
+    if not patterns:
+        raise ValueError(f"{target}: the symptom filter must not be empty")
     return {
-        "rejected_patterns": list(raw.get("rejected_patterns", [])),
-        "hypothesis_to_topic_tags": dict(
-            raw.get("hypothesis_to_topic_tags", DEFAULT_HYPOTHESIS_TO_TAGS)
-        ),
+        "rejected_patterns": patterns,
+        "hypothesis_to_topic_tags": yaml.safe_load(TOPICS_CONFIG.read_text(encoding="utf-8")),
     }
 
 
@@ -115,7 +108,9 @@ def _matches_rejected_query(query: str, patterns: Sequence[str]) -> str | None:
 
 
 def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    """Lowercase words without a plural "s", so that "squats" equals "squat"."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return {w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w for w in words}
 
 
 def _query_mentions_excluded(
@@ -126,7 +121,7 @@ def _query_mentions_excluded(
         return False
     q_tokens = _tokens(query)
     # If any exercise was excluded by a yellow note, block queries mentioning anatomical joints
-    if q_tokens & _BODY_PART_TERMS:
+    if q_tokens & _tokens(" ".join(_BODY_PART_TERMS)):
         return True
     # Also block queries naming any distinctive token of an excluded exercise id
     generic_equipment = {"barbell", "dumbbell", "cable", "machine", "smith", "lever", "grip", "medium", "wide", "close", "seated", "standing", "incline", "decline", "with"}
@@ -155,7 +150,7 @@ def retrieve_knowledge(
 
     # 1. Rule filter: reject symptom / pain / injury queries
     matched_pat = _matches_rejected_query(query, cfg["rejected_patterns"])
-    if matched_pat is not None:
+    if matched_pat is not None or assess_text(query).level is not TriageLevel.GREEN:
         return ToolError(
             code="rejected_query",
             message=(
