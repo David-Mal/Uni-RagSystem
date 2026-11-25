@@ -192,7 +192,7 @@ class ClauseVocab:
     negated_red_plus_mild: tuple[str, ...]
     """Yellow hard negatives: a negated red cue plus a real mild symptom."""
     red_distractor: tuple[str, ...]
-    """Negated mild symptoms or figurative effort placed before a real red symptom ("..., but <red>")."""
+    """Negated mild symptoms placed before a real red symptom ("..., but <red>"); figurative ones use ``figurative``."""
     kinematic: dict[KinematicObservation, tuple[str, ...]]
     outcome: dict[Outcome, tuple[str, ...]]
 
@@ -255,15 +255,13 @@ CLAUSES: dict[str, ClauseVocab] = {
             "{part} is back to normal, nothing hurts",
         ),
         negated_red_plus_mild=(
-            "no sharp pain, just a bit of stiffness in my {part}",
+            "no dizziness, but my {part} stayed stiff the whole session",
             "not a sharp pain or anything, {part} is only slightly achy",
             "no swelling, but my {part} feels a little tight",
         ),
         red_distractor=(
             "no stiffness at all",
             "no soreness this time",
-            "legs are dead after that",
-            "that workout ate me alive",
         ),
         kinematic={
             KinematicObservation.NONE: ("",),
@@ -338,7 +336,7 @@ CLAUSES: dict[str, ClauseVocab] = {
             "nothing sharp, though my {part} is mildly sore",
             "no swelling or anything, {part} just feels a bit stiff",
         ),
-        red_distractor=("no tightness anywhere", "arms are toast"),
+        red_distractor=("no tightness anywhere", "no soreness to report"),
         kinematic={
             KinematicObservation.NONE: ("",),
             KinematicObservation.SLOW_BAR_SPEED: ("bar crawled up", "everything moved like slow motion"),
