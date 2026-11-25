@@ -27,7 +27,7 @@
           "type": "string"
         },
         "value": {
-          "description": "Load magnitude; 0 is allowed for bodyweight-only sets.",
+          "description": "Load magnitude; 0 is allowed for bodyweight-only sets. Ints are accepted (80 -> 80.0).",
           "minimum": 0,
           "title": "Value",
           "type": "number"
@@ -41,7 +41,7 @@
       "type": "object"
     },
     "Outcome": {
-      "description": "Outcome of the set described in a note or message.",
+      "description": "Outcome of the set described in a note or message. The field is never null.\n\n``completed``: no failure or partial completion is reported, which includes notes that do not mention the\noutcome at all. ``partial``: fewer reps than planned were completed. ``failed``: the attempted rep or set was not\ncompleted. Proposed in the #69 review, and the Fi1 guideline should carry the same definition.",
       "enum": [
         "completed",
         "failed",
@@ -62,10 +62,11 @@
     }
   },
   "additionalProperties": false,
-  "description": "Structured extraction of one note or free-text message (plan §6.3).",
+  "description": "Structured extraction of one note or free-text message (plan §6.3).\n\nAll seven keys are required. ``load``, ``reps`` and ``rpe`` are ``null`` when not reported: never omitted and\nnever 0 by default. Numbers are strict, so booleans, numeric strings and inf/NaN are rejected. Ints are accepted\nfor float fields (8 -> 8.0).\n\nMulti-exercise messages (proposed in the #69 review; final wording in the Fi1 guideline): if a symptom is\nreported, ``exercise_id`` and the set fields describe the exercise linked to the most severe symptom. With no\nsymptom, or a tie, they describe the first exercise that has set data. If that cannot be resolved, use\n``unknown``. ``triage_level`` is always the maximum over the whole message.",
   "properties": {
     "exercise_id": {
       "description": "free-exercise-db id, or 'unknown' when the exercise cannot be resolved.",
+      "pattern": "^[A-Za-z0-9_\\-]+$",
       "title": "Exercise Id",
       "type": "string"
     },
@@ -82,7 +83,7 @@
           "type": "null"
         }
       ],
-      "default": null
+      "description": "Reported load, or null when no load is stated."
     },
     "outcome": {
       "$ref": "#/$defs/Outcome"
@@ -97,7 +98,7 @@
           "type": "null"
         }
       ],
-      "default": null,
+      "description": "Explicit repetition count, or null when not stated.",
       "title": "Reps"
     },
     "rpe": {
@@ -111,7 +112,7 @@
           "type": "null"
         }
       ],
-      "default": null,
+      "description": "Explicit RPE (0-10), or null when not stated.",
       "title": "Rpe"
     },
     "triage_level": {
@@ -121,7 +122,10 @@
   "required": [
     "exercise_id",
     "kinematic_observation",
+    "load",
+    "reps",
     "outcome",
+    "rpe",
     "triage_level"
   ],
   "title": "ExtractionResult",
