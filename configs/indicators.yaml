@@ -22,6 +22,7 @@ weekly_sets:
   week_start: monday
   primary_muscle_weight: 1.0
   secondary_muscle_weight: 0.5
+  trend_flat_band: 0.5
 
 load:
   acute_days: 7

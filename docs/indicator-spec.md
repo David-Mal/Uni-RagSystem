@@ -144,6 +144,11 @@ and reps are not required, so bodyweight sets count.
 3. Each effective set adds `[weekly_sets.primary_muscle_weight]` (1.0) to every primary muscle and
    `[weekly_sets.secondary_muscle_weight]` (0.5) to every secondary muscle. A muscle listed as both counts as primary only.
 4. One value per muscle and week with at least one contributing set. A missing cell means 0.
+5. Per muscle: total over the weeks shown, and mean = total / weeks shown. The mean is **defined** rounded to 2
+   decimals, so it can be quoted exactly.
+6. Trend label: last minus first among the weeks with sets; `up` if > `[weekly_sets.trend_flat_band]` (0.5), `down` if
+   < -0.5, otherwise `flat`. The last week is left out if it is incomplete (the last date is not a Sunday) and two other
+   weeks with sets remain, so an unfinished week does not look like a drop.
 
 **Edge cases.** No sets: empty table, no error. Unknown exercises are listed by raw name.
 
