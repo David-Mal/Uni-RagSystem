@@ -37,24 +37,35 @@ The ablation "same model, different prompt" is reported in E4 but not shipped.
 | `data/training/triage_train.jsonl` | train | 1500 | 35 / 30 / 35% green / yellow / red |
 | `data/training/triage_dev.jsonl` | dev | 300 | same |
 
-- Each item holds `item_id` (`tc-…`), `text`, `label`, `label_id`, `task: triage`, plus the manifest fields
+- Each item holds `item_id` (`tc-…`), `text`, `label`, `label_id`, `task: triage` (the dataset), plus the manifest fields
   `pool, persona_id, phrasing_family, hard_negative, seed, generator, generator_model, generator_version,
   paraphraser, schema_version`.
-- **Its own phrasing families**, disjoint from the extractor's. Families carry `task="triage"` and the extractor
-  generator can never pick them. A test enforces this.
+- **Its own phrasing families**, disjoint from the extractor's. Families carry `consumer="classifier"`, the same field
+  as in the P1 manifest (#80), and the extractor generator can never pick them. A test enforces this. All 14
+  classifier families of the manifest are rendered, and every hard-negative family has its own style.
 
-  | Id | Pool | Style |
-  |---|---|---|
-  | `pf_tr_cls_short_note` | train | short lowercase note |
-  | `pf_tr_cls_coach_checkin` | train | check-in message to a coach |
-  | `pf_tr_cls_set_comment` | train | bracketed per-set comment |
-  | `pf_tr_cls_hn_effort` | train | hard negatives (figurative or negated) |
-  | `pf_dev_cls_voice_memo` | dev | transcribed voice memo |
-  | `pf_dev_cls_hn_memo` | dev | hard negatives, voice memo style |
+  | Id | Pool | Style | Hard negative |
+  |---|---|---|---|
+  | `pf_tr_cls_short_note` | train | short lowercase note | |
+  | `pf_tr_cls_coach_checkin` | train | check-in message to a coach | |
+  | `pf_tr_cls_set_comment` | train | bracketed per-set comment | |
+  | `pf_tr_cls_plain_report` | train | plain first-person report | |
+  | `pf_tr_cls_symptom_detail` | train | location, onset and intensity fields | |
+  | `pf_tr_cls_clinical_tone` | train | formal clinical wording | |
+  | `pf_tr_cls_casual_chat` | train | casual chat message | |
+  | `pf_tr_cls_checklist` | train | symptom checklist with yes/no | |
+  | `pf_tr_cls_hn_effort` | train | social-media note with hashtags | figurative or negated |
+  | `pf_tr_cls_hn_soreness` | train | recovery-day note | ordinary muscle soreness |
+  | `pf_dev_cls_voice_memo` | dev | transcribed voice memo | |
+  | `pf_dev_cls_forum_post` | dev | forum-style post at length | |
+  | `pf_dev_cls_hn_memo` | dev | timestamped transcript | figurative or negated |
+  | `pf_dev_cls_hn_past_pain` | dev | follow-up message | old pain stated as resolved |
 
-  **Manifest (P1):** these ids belong in the train and dev pools of `phrasing_families`. They should be marked as
-  classifier families, e.g. with a `classifier:` sub-list or a `task` field, so the split is documented in the
-  manifest itself.
+  The checklist and symptom-detail styles state severity explicitly (`none` / `mild` / `serious`), always consistent
+  with the label (tested). **Soreness** (ordinary next-day muscle soreness is green, while soreness that persists for
+  days is yellow) and **resolved past pain** (green) follow the plan and the Fi1 draft `[TO VERIFY with Fi1]`.
+  Clause phrases come from the same per-pool vocabularies as the extractor (`vocab.CLAUSES`), so train and dev share
+  no phrase.
 - **Seeds**: triage train starts at `train_start + 5000` and triage dev at `dev_start + 500`. Extractor data (F4)
   uses the beginning of both ranges, so no seed is shared.
 - Texts are deduplicated (normalized) within and across the two splits. Leakage-audit drop ids (P4) are removed.

@@ -294,7 +294,8 @@ def test_vocab_exercise_ids_exist_in_free_exercise_db() -> None:
 
 def _clause_phrases(cv: vocab.ClauseVocab) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
-    for name in ("yellow", "red", "red_systemic", "green_positive", "figurative", "negated", "negated_red_plus_mild"):
+    names = ("yellow", "red", "red_systemic", "green_positive", "figurative", "negated", "negated_red_plus_mild")
+    for name in (*names, "soreness_ok", "past_pain_resolved"):
         out[name] = {x for x in getattr(cv, name) if x}
     out["red_distractor"] = set(cv.red_distractor)
     out["kinematic"] = {x for xs in cv.kinematic.values() for x in xs if x}

@@ -41,7 +41,7 @@ GENERATOR_NAME = "template"
 GENERATOR_VERSION = "v0"
 GENERATOR = f"{GENERATOR_NAME}-{GENERATOR_VERSION}"
 ALLOWED_POOLS = ("train", "dev")
-TASKS = ("extractor", "triage")
+CONSUMERS = ("extractor", "classifier")
 
 # Sampling probabilities (documented in docs/datagen-messages.md)
 P_UNKNOWN_EXERCISE = 0.10  # half unresolvable phrase, half no exercise mentioned
@@ -94,11 +94,11 @@ def _weighted(rng: random.Random, weights: Mapping[Any, float]) -> Any:
     return rng.choices(keys, weights=[weights[k] for k in keys], k=1)[0]
 
 
-def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool, task: str) -> list[PhrasingFamily]:
-    """Families of this module for ``task`` that the manifest puts in ``pool``. Never returns a golden-pool family."""
+def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool, consumer: str) -> list[PhrasingFamily]:
+    """Families of ``consumer`` that the manifest puts in ``pool``. Never returns a golden-pool family."""
     out = []
     for fam in FAMILIES.values():
-        if fam.task != task or (fam.hard_negative is not None) != hard_negative:
+        if fam.consumer != consumer or (fam.hard_negative is not None) != hard_negative:
             continue
         try:
             actual = registry.pool_of("phrasing_families", fam.family_id)
@@ -138,12 +138,20 @@ def _symptom(
             return pick(clauses.figurative)
         if kind == "negated":
             return pick(clauses.negated)
+        if kind == "soreness":
+            return pick(clauses.soreness_ok)
+        if kind == "past_pain":
+            return pick(clauses.past_pain_resolved)
         return pick(clauses.green_positive) if allow_positive else ""
     if level is TriageLevel.YELLOW:
         if kind == "negated":
             return pick(clauses.negated_red_plus_mild)
         if kind == "figurative":
             return f"{pick(clauses.figurative)}, and {pick(clauses.yellow)}"
+        if kind == "soreness":
+            return f"{pick(clauses.soreness_ok)}, but also {pick(clauses.yellow)}"
+        if kind == "past_pain":
+            return f"{pick(clauses.past_pain_resolved)}, but now {pick(clauses.yellow)}"
         return pick(clauses.yellow)
     red = pick(clauses.red_systemic) if rng.random() < P_RED_SYSTEMIC else pick(clauses.red)
     if rng.random() < P_RED_DISTRACTOR:
@@ -157,22 +165,24 @@ def generate_item(
     pool: str,
     registry: PoolRegistry,
     paraphraser: Paraphraser | None = None,
-    task: str = "extractor",
+    consumer: str = "extractor",
 ) -> dict[str, Any]:
     """Generate one item deterministically from ``seed``. Raises ``PoolError`` on any pool violation.
 
-    ``task`` selects the family set: ``extractor`` (default) or ``triage`` (classifier families, F8).
+    ``consumer`` selects the family set, as in the P1 manifest: ``extractor`` (default) or ``classifier`` (F8).
     """
     if pool not in ALLOWED_POOLS:
         raise PoolError(f"generator only writes pools {ALLOWED_POOLS}, got {pool!r}")
-    if task not in TASKS:
-        raise ValueError(f"task must be one of {TASKS}, got {task!r}")
+    if consumer not in CONSUMERS:
+        raise ValueError(f"consumer must be one of {CONSUMERS}, got {consumer!r}")
     registry.assert_in_pool(pool, seed=seed)
-    key = f"{GENERATOR}|{seed}|{level.value}" if task == "extractor" else f"{GENERATOR}|{task}|{seed}|{level.value}"
+    key = f"{GENERATOR}|{seed}|{level.value}"
+    if consumer != "extractor":  # the extractor stream stays unchanged so its pinned items hold
+        key = f"{GENERATOR}|{consumer}|{seed}|{level.value}"
     rng = random.Random(key)
 
     hard_negative = rng.random() < P_HARD_NEGATIVE[level]
-    families = _families_for(pool, registry, hard_negative, task)
+    families = _families_for(pool, registry, hard_negative, consumer)
     if not families:
         kind = "hard-negative" if hard_negative else "regular"
         raise PoolError(f"no {kind} phrasing family of this generator is in the {pool!r} pool of the manifest")
@@ -242,6 +252,8 @@ def generate_item(
         kinematic=kin_phrase,
         symptom=symptom,
         extra="",
+        level=level.value,
+        part=part,
     )
     text = family.render(slots, rng).strip()
     paraphraser_name = None

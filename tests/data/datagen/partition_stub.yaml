@@ -26,5 +26,12 @@ phrasing_families:
     - pf_tr_cls_coach_checkin
     - pf_tr_cls_set_comment
     - pf_tr_cls_hn_effort
-  dev: [pf_dev_gym_chat, pf_dev_caps_terse, pf_dev_diary, pf_dev_hn_mixed, pf_dev_cls_voice_memo, pf_dev_cls_hn_memo]
+    - pf_tr_cls_plain_report
+    - pf_tr_cls_symptom_detail
+    - pf_tr_cls_clinical_tone
+    - pf_tr_cls_casual_chat
+    - pf_tr_cls_checklist
+    - pf_tr_cls_hn_soreness
+  dev: [pf_dev_gym_chat, pf_dev_caps_terse, pf_dev_diary, pf_dev_hn_mixed, pf_dev_cls_voice_memo, pf_dev_cls_hn_memo,
+        pf_dev_cls_forum_post, pf_dev_cls_hn_past_pain]
   golden: [pf_gold_x1, pf_gold_x2]

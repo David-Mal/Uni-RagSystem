@@ -13,6 +13,7 @@ Text rules every family follows, so labels stay correct by construction:
 from __future__ import annotations
 
 import random
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -34,6 +35,10 @@ class Slots:
     kinematic: str
     symptom: str
     extra: str
+    level: str | None = None
+    """Triage level of the item. Only renderers that state severity explicitly (checklist, symptom detail) read it."""
+    part: str | None = None
+    """Body part used by the symptom clause, for renderers that name the location separately."""
 
 
 Renderer = Callable[[Slots, random.Random], str]
@@ -48,9 +53,11 @@ class PhrasingFamily:
     description: str
     render: Renderer
     hard_negative: str | None = None
-    """``None`` for regular families, else the hard-negative kind: ``figurative``, ``negated`` or ``mixed``."""
-    task: str = "extractor"
-    """``extractor`` or ``triage``: the triage classifier has its own families, disjoint from the extractor's (F8)."""
+    """``None`` for regular families, else the hard-negative kind: ``figurative``, ``negated``, ``mixed``
+    (figurative or negated), ``soreness`` or ``past_pain`` (the last two for the classifier only)."""
+    consumer: str = "extractor"
+    """``extractor`` or ``classifier``, as the ``consumer`` field in the P1 manifest. The classifier has its own
+    families, disjoint from the extractor's (F8, plan §6.4)."""
 
 
 # ---------------------------------------------------------------- formatting helpers
@@ -370,8 +377,11 @@ FAMILIES: dict[str, PhrasingFamily] = {
 }
 
 
-# ---------------------------------------------------------------- triage-classifier families (F8, plan §6.4)
-# Note-style texts centred on how the body felt; disjoint from the extractor families above.
+# ---------------------------------------------------------------- classifier families (F8, plan §6.4)
+# Note-style texts centred on how the body felt; disjoint from the extractor families above. Ids and consumer come
+# from the P1 manifest. Every hard-negative family has its own renderer.
+
+_SEVERITY_WORD = {"green": "none", "yellow": "mild", "red": "serious"}
 
 
 def _short_note(s: Slots, rng: random.Random) -> str:
@@ -390,36 +400,105 @@ def _set_comment(s: Slots, rng: random.Random) -> str:
     return f"{tag} " + (" | ".join(clauses(s)) or "ok")
 
 
+def _plain_report(s: Slots, rng: random.Random) -> str:
+    first = f"Today I did {s.exercise}" if s.exercise else "Today I trained"
+    return _sentences([first, *clauses(s)])
+
+
+def _symptom_detail(s: Slots, rng: random.Random) -> str:
+    severity = _SEVERITY_WORD.get(s.level or "", "unclear")
+    where = s.part if s.symptom and s.level != "green" and s.part else "n/a"
+    when = rng.choice(("during the session", "right after training", "later that evening")) if where != "n/a" else "n/a"
+    note = "; ".join(clauses(s)) or "nothing to add"
+    return (
+        f"Activity: {s.exercise or 'training'}. Location: {where}. Onset: {when}. Intensity: {severity}. Note: {note}."
+    )
+
+
+def _clinical_tone(s: Slots, rng: random.Random) -> str:
+    complaint = "; ".join(clauses(s)) or "no complaint reported"
+    return f"Reported following {s.exercise or 'the training session'}: {complaint}."
+
+
+def _casual_chat(s: Slots, rng: random.Random) -> str:
+    opener = rng.choice(("tbh", "ngl", "honestly"))
+    body = ", ".join(clauses(s)) or "all normal"
+    return f"{opener} {s.exercise or 'gym'} today, {body}" + rng.choice(("", " :/", " :)"))
+
+
+def _checklist(s: Slots, rng: random.Random) -> str:
+    any_symptom = "no" if s.level == "green" else "yes"
+    severity = _SEVERITY_WORD.get(s.level or "", "unclear")
+    detail = "; ".join(clauses(s)) or "-"
+    return f"exercise: {s.exercise or '-'} / any symptoms: {any_symptom} / severity: {severity} / details: {detail}"
+
+
+def _hashtag_note(s: Slots, rng: random.Random) -> str:
+    """Train HN (figurative or negated): social-media style with hashtags."""
+    tag = "#" + re.sub(r"[^a-z]", "", (s.exercise or "gym").lower())
+    return ", ".join(clauses(s) or ["done"]) + f" {tag} " + rng.choice(("#gains", "#grind", "#trainhard"))
+
+
+def _soreness_note(s: Slots, rng: random.Random) -> str:
+    """Train HN (ordinary soreness): a recovery-day note."""
+    return f"Recovery check, day after {s.exercise or 'training'}: " + (", ".join(clauses(s)) or "fine") + "."
+
+
 def _voice_memo(s: Slots, rng: random.Random) -> str:
     filler = rng.choice(("so um", "okay so", "right so"))
     return f"{filler}, {s.exercise or 'the workout'}, " + ", ".join(clauses(s) or ["all good"]) + ", yeah"
+
+
+def _forum_post(s: Slots, rng: random.Random) -> str:
+    body = " ".join(_cap(c) + "." for c in clauses(s)) or "Nothing else happened."
+    return (
+        f"Title: question after {s.exercise or 'my workout'}\nLong-time reader, first post. {body} Any advice welcome."
+    )
+
+
+def _transcript(s: Slots, rng: random.Random) -> str:
+    """Dev HN (figurative or negated): an automatic transcript with timestamps."""
+    return " ".join(f"[00:0{i}] {c}" for i, c in enumerate([s.exercise or "workout", *clauses(s)], start=1))
+
+
+def _follow_up(s: Slots, rng: random.Random) -> str:
+    """Dev HN (resolved past pain): a follow-up message."""
+    return "Follow-up from last time - " + ("; ".join(clauses(s)) or "nothing new") + f" ({s.exercise or 'training'})."
+
+
+def _cls(family_id: str, pool: str, description: str, render: Renderer, hn: str | None = None) -> PhrasingFamily:
+    return PhrasingFamily(family_id, pool, description, render, hard_negative=hn, consumer="classifier")
 
 
 FAMILIES.update(
     {
         f.family_id: f
         for f in (
-            PhrasingFamily("pf_tr_cls_short_note", "train", "short lowercase note", _short_note, task="triage"),
-            PhrasingFamily(
-                "pf_tr_cls_coach_checkin", "train", "check-in message to a coach", _coach_checkin, task="triage"
-            ),
-            PhrasingFamily("pf_tr_cls_set_comment", "train", "bracketed per-set comment", _set_comment, task="triage"),
-            PhrasingFamily(
+            _cls("pf_tr_cls_short_note", "train", "short lowercase note", _short_note),
+            _cls("pf_tr_cls_coach_checkin", "train", "check-in message to a coach", _coach_checkin),
+            _cls("pf_tr_cls_set_comment", "train", "bracketed per-set comment", _set_comment),
+            _cls("pf_tr_cls_plain_report", "train", "plain first-person report", _plain_report),
+            _cls("pf_tr_cls_symptom_detail", "train", "location, onset and intensity fields", _symptom_detail),
+            _cls("pf_tr_cls_clinical_tone", "train", "formal clinical wording", _clinical_tone),
+            _cls("pf_tr_cls_casual_chat", "train", "casual chat message", _casual_chat),
+            _cls("pf_tr_cls_checklist", "train", "symptom checklist with yes/no", _checklist),
+            _cls(
                 "pf_tr_cls_hn_effort",
                 "train",
-                "hard negatives (figurative or negated) as short notes",
-                _short_note,
-                hard_negative="mixed",
-                task="triage",
+                "hard negatives (figurative or negated), hashtags",
+                _hashtag_note,
+                "mixed",
             ),
-            PhrasingFamily("pf_dev_cls_voice_memo", "dev", "transcribed voice memo", _voice_memo, task="triage"),
-            PhrasingFamily(
-                "pf_dev_cls_hn_memo",
-                "dev",
-                "hard negatives (figurative or negated) as voice memos",
-                _voice_memo,
-                hard_negative="mixed",
-                task="triage",
+            _cls(
+                "pf_tr_cls_hn_soreness", "train", "hard negatives: ordinary muscle soreness", _soreness_note, "soreness"
+            ),
+            _cls("pf_dev_cls_voice_memo", "dev", "transcribed voice memo", _voice_memo),
+            _cls("pf_dev_cls_forum_post", "dev", "forum-style post at length", _forum_post),
+            _cls(
+                "pf_dev_cls_hn_memo", "dev", "hard negatives (figurative or negated), transcript", _transcript, "mixed"
+            ),
+            _cls(
+                "pf_dev_cls_hn_past_pain", "dev", "hard negatives: old pain stated as resolved", _follow_up, "past_pain"
             ),
         )
     }

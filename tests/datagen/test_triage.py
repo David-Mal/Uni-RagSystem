@@ -14,8 +14,8 @@ from src.datagen.triage import ID2LABEL, LABEL2ID, build_triage
 from src.schemas import TriageLevel
 
 STUB = Path(__file__).resolve().parents[1] / "data" / "datagen" / "partition_stub.yaml"
-TRIAGE_FAMILIES = {f.family_id for f in FAMILIES.values() if f.task == "triage"}
-EXTRACTOR_FAMILIES = {f.family_id for f in FAMILIES.values() if f.task == "extractor"}
+TRIAGE_FAMILIES = {f.family_id for f in FAMILIES.values() if f.consumer == "classifier"}
+EXTRACTOR_FAMILIES = {f.family_id for f in FAMILIES.values() if f.consumer == "extractor"}
 
 
 @pytest.fixture(scope="module")
@@ -62,3 +62,30 @@ def test_texts_unique_across_splits_and_hard_negatives_present(built: tuple) -> 
     assert len(texts) == len(set(texts))
     assert any(it["hard_negative"] for it in train)
     assert all(it["label"] != "red" for it in train + dev if it["hard_negative"])
+
+
+def test_every_manifest_classifier_family_is_used() -> None:
+    reg = PoolRegistry.load(STUB)
+    train, dev, _ = build_triage(reg, n_train=900, n_dev=300)
+    assert {it["phrasing_family"] for it in train} == set(reg.members("phrasing_families", "train")) & TRIAGE_FAMILIES
+    assert {it["phrasing_family"] for it in dev} == set(reg.members("phrasing_families", "dev")) & TRIAGE_FAMILIES
+    assert {it["hard_negative"] for it in train} >= {"mixed", "soreness"}  # family kind, as for the extractor
+    assert "past_pain" in {it["hard_negative"] for it in dev}
+
+
+def test_checklist_and_detail_state_severity_consistently() -> None:
+    train, _, _ = build_triage(PoolRegistry.load(STUB), n_train=900, n_dev=30)
+    severity = {"green": "none", "yellow": "mild", "red": "serious"}
+    for it in train:
+        if it["phrasing_family"] == "pf_tr_cls_checklist":
+            assert f"any symptoms: {'no' if it['label'] == 'green' else 'yes'}" in it["text"], it
+            assert f"severity: {severity[it['label']]}" in it["text"], it
+        if it["phrasing_family"] == "pf_tr_cls_symptom_detail":
+            assert f"Intensity: {severity[it['label']]}." in it["text"], it
+
+
+def test_soreness_and_past_pain_hard_negatives_are_never_red(built: tuple) -> None:
+    train, dev, _ = built
+    for it in train + dev:
+        if it["hard_negative"] in ("soreness", "past_pain"):
+            assert it["label"] in ("green", "yellow"), it

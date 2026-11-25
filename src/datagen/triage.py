@@ -1,8 +1,8 @@
 """Triage-classifier data: ``triage_train.jsonl`` and ``triage_dev.jsonl`` (issue F8, plan §6.4).
 
 Items are text + label only, plus the manifest fields. They come from the classifier's own phrasing families
-(``task="triage"`` in ``families.py``), which are disjoint from the extractor's families. Seeds come from the
-train/dev pools at an offset, so they never coincide with the extractor's seeds in F4.
+(``consumer="classifier"`` in ``families.py`` and in the P1 manifest), which are disjoint from the extractor's
+families. Seeds come from the train/dev pools at an offset, so they never coincide with the extractor's seeds in F4.
 
 Usage::
 
@@ -69,10 +69,17 @@ def build_triage(
     train_start = registry.seed_range("train")[0] + TRAIN_SEED_OFFSET
     dev_start = registry.seed_range("dev")[0] + DEV_SEED_OFFSET
     train, _ = build_split(
-        "triage_train", "train", class_targets(n_train, ratios), train_start, registry, seen, set(), task="triage"
+        "triage_train",
+        "train",
+        class_targets(n_train, ratios),
+        train_start,
+        registry,
+        seen,
+        set(),
+        consumer="classifier",
     )
     dev, _ = build_split(
-        "triage_dev", "dev", class_targets(n_dev, ratios), dev_start, registry, seen, set(), task="triage"
+        "triage_dev", "dev", class_targets(n_dev, ratios), dev_start, registry, seen, set(), consumer="classifier"
     )
     out_train = [t for t in map(to_triage_item, train.items) if t["item_id"] not in drop_ids]
     out_dev = [t for t in map(to_triage_item, dev.items) if t["item_id"] not in drop_ids]

@@ -193,6 +193,10 @@ class ClauseVocab:
     """Yellow hard negatives: a negated red cue plus a real mild symptom."""
     red_distractor: tuple[str, ...]
     """Negated mild symptoms or figurative effort placed before a real red symptom ("..., but <red>")."""
+    soreness_ok: tuple[str, ...]
+    """Classifier hard negatives (green): ordinary next-day muscle soreness, not pain [TO VERIFY with Fi1]."""
+    past_pain_resolved: tuple[str, ...]
+    """Classifier hard negatives (green): an old complaint stated as fully resolved [TO VERIFY with Fi1]."""
     kinematic: dict[KinematicObservation, tuple[str, ...]]
     outcome: dict[Outcome, tuple[str, ...]]
 
@@ -264,6 +268,15 @@ CLAUSES: dict[str, ClauseVocab] = {
             "no soreness this time",
             "legs are dead after that",
             "that workout ate me alive",
+        ),
+        soreness_ok=(
+            "the normal day-after muscle soreness",
+            "regular muscle soreness from the previous session, expected",
+            "usual DOMS from the session, nothing unusual",
+        ),
+        past_pain_resolved=(
+            "the {part} niggle from spring is long gone",
+            "that old {part} issue cleared up months ago",
         ),
         kinematic={
             KinematicObservation.NONE: ("",),
@@ -339,6 +352,11 @@ CLAUSES: dict[str, ClauseVocab] = {
             "no swelling or anything, {part} just feels a bit stiff",
         ),
         red_distractor=("no tightness anywhere", "arms are toast"),
+        soreness_ok=("typical post-workout muscle soreness", "the normal muscle burn the day after"),
+        past_pain_resolved=(
+            "had {part} trouble last year, fully healed now",
+            "old {part} problem from the summer is over",
+        ),
         kinematic={
             KinematicObservation.NONE: ("",),
             KinematicObservation.SLOW_BAR_SPEED: ("bar crawled up", "everything moved like slow motion"),
