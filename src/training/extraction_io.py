@@ -53,9 +53,9 @@ def build_prompt(text: str, setup: str, exercise_ids: Iterable[str], examples: S
         encoding="utf-8"
     )
     shots = "".join(f"Note: {ex['text']}\nJSON: {label_json(ex['labels'])}\n\n" for ex in examples)
-    return (
-        template.replace("{exercise_ids}", ", ".join(exercise_ids)).replace("{examples}", shots).replace("{text}", text)
-    )
+    parts = {"exercise_ids": ", ".join(exercise_ids), "examples": shots, "text": text}
+    # One pass, so a note that contains "{text}" or "{examples}" is not expanded again.
+    return re.sub(r"\{(exercise_ids|examples|text)\}", lambda m: parts[m.group(1)], template)
 
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
