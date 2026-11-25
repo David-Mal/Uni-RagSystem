@@ -1,4 +1,4 @@
-"""Tests for the template message generator (issue F3). Uses the test stub manifest, never the golden data."""
+"""Tests for the template message generator (issue F3) on the real manifest. Never reads golden data."""
 
 from __future__ import annotations
 
@@ -7,25 +7,25 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from src.datagen import vocab
 from src.datagen.families import FAMILIES
 from src.datagen.messages import GeneratorConfig, generate, generate_item, write_jsonl
-from src.datagen.registry import PoolError, PoolRegistry
+from src.datagen.partition import DEFAULT_PATH, Partition, PoolError, load_partition
 from src.schemas import ExtractionResult, Outcome, TriageLevel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-STUB = REPO_ROOT / "tests" / "data" / "datagen" / "partition_stub.yaml"
 FEDB = REPO_ROOT / "data" / "exercises" / "free-exercise-db.json"
 
 
 @pytest.fixture(scope="module")
-def registry() -> PoolRegistry:
-    return PoolRegistry.load(STUB)
+def registry() -> Partition:
+    return load_partition()
 
 
 @pytest.fixture(scope="module")
-def train_items(registry: PoolRegistry) -> list[dict]:
+def train_items(registry: Partition) -> list[dict]:
     cfg = GeneratorConfig(pool="train", per_class=dict.fromkeys(TriageLevel, 200), base_seed=1)
     return list(generate(cfg, registry))
 
@@ -42,20 +42,20 @@ def _num(v: float) -> str:
 # ---------------- determinism
 
 
-def test_same_seed_same_item(registry: PoolRegistry) -> None:
+def test_same_seed_same_item(registry: Partition) -> None:
     a = generate_item(TriageLevel.RED, 42, "train", registry)
     b = generate_item(TriageLevel.RED, 42, "train", registry)
     assert a == b
 
 
-def test_same_config_same_file(registry: PoolRegistry, tmp_path: Path) -> None:
+def test_same_config_same_file(registry: Partition, tmp_path: Path) -> None:
     cfg = GeneratorConfig(pool="train", per_class=dict.fromkeys(TriageLevel, 20), base_seed=500)
     write_jsonl(generate(cfg, registry), tmp_path / "a.jsonl")
     write_jsonl(generate(cfg, registry), tmp_path / "b.jsonl")
     assert (tmp_path / "a.jsonl").read_bytes() == (tmp_path / "b.jsonl").read_bytes()
 
 
-def test_different_seeds_differ(registry: PoolRegistry) -> None:
+def test_different_seeds_differ(registry: Partition) -> None:
     texts = {generate_item(TriageLevel.GREEN, s, "train", registry)["text"] for s in range(1, 51)}
     assert len(texts) > 45
 
@@ -80,7 +80,6 @@ def test_hard_negatives_only_from_their_own_families(train_items: list[dict]) ->
     hn = [it for it in train_items if it["hard_negative"]]
     assert hn, "hard negatives must be present in training data"
     assert {it["phrasing_family"] for it in hn} <= {"pf_tr_hn_figurative", "pf_tr_hn_negated"}
-    assert all(it["labels"]["triage_level"] != "red" for it in hn)
     assert all(not it["hard_negative"] for it in train_items if "_hn_" not in it["phrasing_family"])
 
 
@@ -142,48 +141,46 @@ def test_unknown_exercise_iff_no_known_alias(train_items: list[dict]) -> None:
             assert any(a.lower() in it["text"].lower() for a in by_id[ex_id].aliases), it
 
 
-def test_hand_checked_examples(registry: PoolRegistry) -> None:
+def test_hand_checked_examples(registry: Partition) -> None:
     # Pinned items, read and checked by hand. A change to vocab/families changes them: re-check by hand, then update.
     a = generate_item(TriageLevel.YELLOW, 3, "train", registry)
-    # "managed 5 out of 7" -> partial with 5 completed reps; "had to grind the final rep" -> grinding_rep;
-    # "slight twinge" -> yellow; 105 lbs and RPE 7 written -> labeled as written.
-    assert a["text"] == (
-        "- Incline dbs: 105 lbs, RPE 7\n- managed 5 out of 7\n- had to grind the final rep\n"
-        "- slight twinge in my shoulder"
-    )
+    # "mild discomfort" -> yellow; bodyweight exercise, so no load; 8 reps and RPE 9.5 as written.
+    assert a["text"] == "- Tricep dips: 8 reps, RPE 9.5\n- some mild discomfort around the shoulder"
     assert a["labels"] == {
-        "exercise_id": "Incline_Dumbbell_Press",
-        "kinematic_observation": "grinding_rep",
-        "load": {"value": 105.0, "unit": "lb"},
-        "reps": 5,
-        "outcome": "partial",
-        "rpe": 7.0,
+        "exercise_id": "Dips_-_Triceps_Version",
+        "kinematic_observation": "none",
+        "load": None,
+        "reps": 8,
+        "outcome": "completed",
+        "rpe": 9.5,
         "triage_level": "yellow",
     }
 
-    b = generate_item(TriageLevel.RED, 2, "train", registry)
-    # A figurative distractor before a real red symptom ("stabbing pain") is still red; 6 of 8 planned -> partial.
+    b = generate_item(TriageLevel.RED, 12, "train", registry)
+    # A negated mild symptom before a real red symptom (dizzy) is red, in the negated hard-negative style. Failed lift:
+    # no rep count in the text, so reps is null; RPE 10 as written.
+    assert b["phrasing_family"] == "pf_tr_hn_negated" and b["hard_negative"] == "negated"
     assert b["text"] == (
-        "DB OHP 30kg @8 / managed 6 out of 8 / legs are dead after that, but stabbing pain in my shoulder"
+        "Status: couldn't lock it out; no soreness this time, but got really dizzy after the set. (pull ups, RPE 10)"
     )
     assert b["labels"] == {
-        "exercise_id": "Dumbbell_Shoulder_Press",
+        "exercise_id": "Pullups",
         "kinematic_observation": "none",
-        "load": {"value": 30.0, "unit": "kg"},
-        "reps": 6,
-        "outcome": "partial",
-        "rpe": 8.0,
+        "load": None,
+        "reps": None,
+        "outcome": "failed",
+        "rpe": 10.0,
         "triage_level": "red",
     }
 
     c = generate_item(TriageLevel.GREEN, 2, "train", registry)
-    # Hard negative (negated pain) in its own "Status:" style -> green; numbers in brackets are labeled.
+    # Hard negative (negated pain) in the same "Status:" style -> green; numbers in brackets are labeled.
     assert c["phrasing_family"] == "pf_tr_hn_negated" and c["hard_negative"] == "negated"
-    assert c["text"] == "Status: left knee felt fine, zero pain. (hack squat, 70 kg, 6 reps, RPE 8)"
+    assert c["text"] == "Status: left knee felt fine, zero pain. (hack squat, 85 kg, 6 reps, RPE 8)"
     assert c["labels"] == {
         "exercise_id": "Hack_Squat",
         "kinematic_observation": "none",
-        "load": {"value": 70.0, "unit": "kg"},
+        "load": {"value": 85.0, "unit": "kg"},
         "reps": 6,
         "outcome": "completed",
         "rpe": 8.0,
@@ -194,40 +191,55 @@ def test_hand_checked_examples(registry: PoolRegistry) -> None:
 # ---------------- pool rules
 
 
-def test_refuses_golden_pool(registry: PoolRegistry) -> None:
+def test_refuses_golden_pool(registry: Partition) -> None:
     with pytest.raises(PoolError):
         generate_item(TriageLevel.GREEN, 100_000, "golden", registry)
 
 
-def test_refuses_seed_outside_pool(registry: PoolRegistry) -> None:
+def test_refuses_seed_outside_pool(registry: Partition) -> None:
     with pytest.raises(PoolError):
         generate_item(TriageLevel.GREEN, 20_000, "train", registry)  # dev seed
     with pytest.raises(PoolError):
         generate_item(TriageLevel.GREEN, 100_500, "train", registry)  # golden seed
 
 
+def _manifest() -> dict:
+    return yaml.safe_load(DEFAULT_PATH.read_text(encoding="utf-8"))
+
+
 def test_refuses_family_moved_to_golden() -> None:
-    data = {
-        "seeds": {"train": [1, 10], "golden": [100, 110]},
-        "personas": {"train": ["p1"]},
-        "phrasing_families": {
-            "train": [f for f in FAMILIES if f.startswith("pf_tr_") and f != "pf_tr_terse_log"],
-            "golden": ["pf_tr_terse_log"],
-        },
-    }
-    reg = PoolRegistry.from_manifest(data)
-    with pytest.raises(PoolError, match="golden"):
-        generate_item(TriageLevel.GREEN, 1, "train", reg)
+    data = _manifest()
+    families = data["phrasing_families"]
+    moved = families["train"].pop(0)
+    families["golden"].append({**moved, "consumer": "messages"})
+    with pytest.raises(PoolError):  # the manifest itself is invalid: golden ids have their own prefix
+        Partition.from_mapping(data)
 
 
-def test_dev_pool_uses_only_dev_ids(registry: PoolRegistry) -> None:
+def test_families_of_another_consumer_are_not_used() -> None:
+    data = _manifest()
+    for fam in data["phrasing_families"]["train"]:
+        if fam["id"] == "pf_tr_terse_log":
+            fam["consumer"] = "classifier"
+    reg = Partition.from_mapping(data)
+    cfg = GeneratorConfig(pool="train", per_class=dict.fromkeys(TriageLevel, 100), base_seed=1)
+    used = {it["phrasing_family"] for it in generate(cfg, reg)}
+    assert "pf_tr_terse_log" not in used and not any("_cls_" in f for f in used)
+
+
+def test_every_extractor_family_of_the_manifest_is_rendered(registry: Partition) -> None:
+    wanted = {f.id for p in ("train", "dev") for f in registry.phrasing_families[p] if f.consumer == "extractor"}
+    assert wanted == {f for f in FAMILIES if "_cls_" not in f}
+
+
+def test_dev_pool_uses_only_dev_ids(registry: Partition) -> None:
     cfg = GeneratorConfig(pool="dev", per_class=dict.fromkeys(TriageLevel, 30), base_seed=20_000)
     items = list(generate(cfg, registry))
     assert {it["phrasing_family"] for it in items} <= set(registry.members("phrasing_families", "dev"))
     assert {it["persona_id"] for it in items} <= set(registry.members("personas", "dev"))
 
 
-def test_no_family_of_this_generator_is_golden(registry: PoolRegistry) -> None:
+def test_no_family_of_this_generator_is_golden(registry: Partition) -> None:
     golden = set(registry.members("phrasing_families", "golden"))
     assert not golden & set(FAMILIES)
     for fam in FAMILIES.values():
@@ -239,7 +251,7 @@ def test_write_jsonl_refuses_golden_dir(tmp_path: Path) -> None:
         write_jsonl([], tmp_path / "data" / "golden" / "x.jsonl")
 
 
-def test_paraphraser_is_recorded(registry: PoolRegistry) -> None:
+def test_paraphraser_is_recorded(registry: Partition) -> None:
     class Upper:
         name = "fake-upper-v1"
 
@@ -249,27 +261,6 @@ def test_paraphraser_is_recorded(registry: PoolRegistry) -> None:
     item = generate_item(TriageLevel.GREEN, 5, "train", registry, paraphraser=Upper())
     assert item["paraphraser"] == "fake-upper-v1"
     assert item["text"] == item["text"].upper()
-
-
-# ---------------- registry
-
-
-def test_registry_rejects_overlaps() -> None:
-    with pytest.raises(PoolError):
-        PoolRegistry.from_manifest({"seeds": {"train": [1, 100], "dev": [50, 150]}})
-    with pytest.raises(PoolError):
-        PoolRegistry.from_manifest({"seeds": {"train": [1, 2]}, "personas": {"train": ["a"], "golden": ["a"]}})
-
-
-def test_registry_accepts_manifest_shapes() -> None:
-    reg = PoolRegistry.from_manifest(
-        {
-            "seeds": {"train": "1-9", "dev": {"start": 10, "end": 19}},
-            "personas": {"train": [{"id": "p1", "description": "beginner"}], "dev": {"p2": "returning lifter"}},
-        }
-    )
-    assert reg.pool_of_seed(9) == "train" and reg.pool_of_seed(10) == "dev"
-    assert reg.pool_of("personas", "p2") == "dev"
 
 
 # ---------------- vocabulary
@@ -342,7 +333,7 @@ def test_no_clause_reuses_plan_or_guideline_wording() -> None:
                 assert not _grams(text) & blocked, f"{pool}/{name}: {phrase!r} reuses {_grams(text) & blocked}"
 
 
-def test_dev_items_use_only_dev_clauses(registry: PoolRegistry) -> None:
+def test_dev_items_use_only_dev_clauses(registry: Partition) -> None:
     cfg = GeneratorConfig(pool="dev", per_class=dict.fromkeys(TriageLevel, 60), base_seed=20_000)
     train_clauses = set().union(*_clause_phrases(vocab.CLAUSES["train"]).values())
     templated = [c for c in train_clauses if "{" in c]
@@ -356,10 +347,37 @@ def test_dev_items_use_only_dev_clauses(registry: PoolRegistry) -> None:
 
 
 def test_red_items_include_negated_or_figurative_distractors(train_items: list[dict]) -> None:
-    distractors = vocab.CLAUSES["train"].red_distractor
     red = [it for it in train_items if it["labels"]["triage_level"] == "red"]
-    mixed = [it for it in red if any(d.lower() in it["text"].lower() for d in distractors)]
+    mixed = [it for it in red if it["hard_negative"]]
     assert len(mixed) >= 0.05 * len(red), f"{len(mixed)} of {len(red)} red items have a distractor clause"
+    assert all(", but " in it["text"].lower() for it in mixed)
+
+
+@pytest.mark.parametrize(("pool", "base"), [("train", 1), ("dev", 20_000)])
+def test_the_style_does_not_give_the_label_away(registry: Partition, pool: str, base: int) -> None:
+    per_class = dict.fromkeys(TriageLevel, 300)
+    seen: dict[str, set[str]] = {}
+    for it in generate(GeneratorConfig(pool=pool, per_class=per_class, base_seed=base), registry):
+        seen.setdefault(it["phrasing_family"], set()).add(it["labels"]["triage_level"])
+    assert all(levels == {"green", "yellow", "red"} for levels in seen.values()), seen
+
+
+def test_regular_styles_have_no_negated_or_figurative_red(train_items: list[dict]) -> None:
+    clauses = vocab.CLAUSES["train"]
+    for it in train_items:
+        if it["labels"]["triage_level"] == "red" and not it["hard_negative"]:
+            assert not any(c.lower() in it["text"].lower() for c in clauses.red_distractor), it
+
+
+def test_failed_sets_mention_no_completed_reps(registry: Partition) -> None:
+    for pool, base in (("train", 1), ("dev", 20_000)):
+        phrases = [p for ps in vocab.CLAUSES[pool].kinematic.values() for p in ps if p]
+        bad = [p for p in phrases if re.search(r"\b(final|last|reps?|couple|end)\b", p) or "grind" in p or "fight" in p]
+        assert bad
+        cfg = GeneratorConfig(pool=pool, per_class=dict.fromkeys(TriageLevel, 300), base_seed=base)
+        for it in generate(cfg, registry):
+            if it["labels"]["outcome"] == "failed":
+                assert not any(p in it["text"].lower() for p in bad), it
 
 
 def test_rep_number_words_match_the_label(train_items: list[dict]) -> None:
@@ -387,12 +405,10 @@ def test_hard_negative_families_have_their_own_renderers() -> None:
 
 
 def test_missing_hard_negative_families_raise() -> None:
-    data = {
-        "seeds": {"train": [1, 2000], "golden": [100000, 100010]},
-        "personas": {"train": ["p1"]},
-        "phrasing_families": {"train": [f for f in FAMILIES if f.startswith("pf_tr_") and "_hn_" not in f]},
-    }
-    reg = PoolRegistry.from_manifest(data)
+    data = _manifest()
+    train = data["phrasing_families"]["train"]
+    data["phrasing_families"]["train"] = [f for f in train if "_hn_" not in f["id"]]
+    reg = Partition.from_mapping(data)
     with pytest.raises(PoolError, match="hard-negative"):
         cfg = GeneratorConfig(pool="train", per_class={TriageLevel.GREEN: 200}, base_seed=1)
         list(generate(cfg, reg))
