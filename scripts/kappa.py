@@ -1,4 +1,4 @@
-"""Compare independently assigned categorical labels without using message text.
+"""Compare seven independently assigned extraction fields without message text.
 
 Only explicitly supplied JSONL files and JSON Pointers are read. This is a
 comparison utility, not the F2 extraction schema or the evaluation harness.
@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 import json
 import math
 from pathlib import Path
@@ -41,9 +42,16 @@ CATEGORICAL_VALUES: dict[str, frozenset[str] | None] = {
     "triage_level": frozenset({"green", "yellow", "red"}),
 }
 EXERCISE_ID_PATTERN = r"^[A-Za-z0-9_\-]+$"  # F2 models.EXERCISE_ID_PATTERN.
+HEADLINE_FIELDS = frozenset(CATEGORICAL_VALUES)
+NUMERIC_FIELDS = frozenset({"load", "reps", "rpe"})
+EXTRACTION_FIELDS = (
+    "exercise_id", "kinematic_observation", "load", "reps", "outcome", "rpe", "triage_level",
+)
 
 ItemKey = tuple[str, str | int]
-Annotations = dict[ItemKey, dict[str, str]]
+NumericValue = int | float | Decimal
+Category = str | NumericValue | tuple[NumericValue, str] | None
+Annotations = dict[ItemKey, dict[str, Category]]
 AgreementStatus = Literal["undefined", "meets_threshold", "below_threshold"]
 
 
@@ -66,19 +74,29 @@ class KappaResult:
     kappa: float | None
 
 
-class FieldReport(TypedDict):
+class KappaMetrics(TypedDict):
     n_items: int
     agreements: int
     observed_agreement: float
     expected_agreement: float
     kappa: float | None
+
+
+class FieldReport(KappaMetrics):
     status: AgreementStatus
     red_vs_not_red_disagreements: NotRequired[int]
 
 
+class NumericFieldReport(KappaMetrics):
+    status: Literal["reported_only", "undefined"]
+
+
 class AgreementReport(TypedDict):
+    # The threshold and review decision apply only to the selected headlines.
     threshold: float
     fields: dict[str, FieldReport]
+    numeric_fields: dict[str, NumericFieldReport]
+    unselected_headline_fields: list[str]
     review_required: bool
 
 
@@ -115,10 +133,10 @@ def lookup_pointer(record: object, pointer: str) -> object:
 
 def parse_field(argument: str) -> FieldSpec:
     name, separator, pointer = argument.partition("=")
-    if not separator or name not in CATEGORICAL_VALUES:
+    if not separator or name not in EXTRACTION_FIELDS:
         raise argparse.ArgumentTypeError(
             "Use NAME=/pointer; supported names: "
-            + ", ".join(CATEGORICAL_VALUES)
+            + ", ".join(EXTRACTION_FIELDS)
         )
     try:
         pointer_parts(pointer)
@@ -140,23 +158,74 @@ def _reject_constant(value: str) -> object:
     raise AnnotationError("Non-finite constants are invalid JSON.")
 
 
-def _finite_float(value: str) -> float:
+def _finite_float(value: str) -> Decimal:
+    """Retain a JSON decimal exactly after checking F2 float representability."""
     parsed = float(value)
     if not math.isfinite(parsed):
         raise AnnotationError("JSON numbers must be representable as finite values.")
-    return parsed
+    try:
+        return Decimal(value)  # Do not merge distinct JSON values through binary-float rounding.
+    except InvalidOperation as exc:
+        raise AnnotationError("A JSON number cannot be represented exactly.") from exc
+
+
+def _nonnegative_number(value: object, field: str) -> NumericValue:
+    """Validate reported numbers without coercion, rounding or unit conversion."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        raise AnnotationError(f"{field} must be a JSON number, not a boolean or string.")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise AnnotationError(f"{field} must be finite.")
+    if isinstance(value, Decimal) and not value.is_finite():
+        raise AnnotationError(f"{field} must be finite.")
+    if value < 0:
+        raise AnnotationError(f"{field} must be nonnegative.")
+    return value
+
+
+def _label_category(name: str, value: object) -> Category:
+    """Make a hashable nominal category under Patrick's exact-match convention."""
+    if name in NUMERIC_FIELDS:
+        if value is None:
+            return None  # Explicit null is a category, never a missing record.
+        if name == "load":
+            if not isinstance(value, dict) or set(value) != {"value", "unit"}:
+                raise AnnotationError("load must be null or an object with exactly value and unit.")
+            magnitude = _nonnegative_number(value["value"], "load.value")
+            unit = value["unit"]
+            if not isinstance(unit, str) or unit not in ("kg", "lb"):
+                raise AnnotationError("load.unit must be kg or lb.")
+            return magnitude, unit
+        if name == "reps":
+            if type(value) is not int or value < 0:
+                raise AnnotationError("reps must be null or a strict nonnegative integer.")
+            return value
+        rpe = _nonnegative_number(value, "rpe")
+        if rpe > 10:
+            raise AnnotationError("rpe must be between 0 and 10 inclusive.")
+        return rpe
+    allowed = CATEGORICAL_VALUES[name]
+    if not isinstance(value, str) or not value.strip():
+        raise AnnotationError(f"{name} must be a non-empty categorical string.")
+    if allowed is not None and value not in allowed:
+        raise AnnotationError(f"{name} is outside the F2 specified enum.")
+    if name == "exercise_id" and (
+        not re.fullmatch(EXERCISE_ID_PATTERN, value)
+        or (value.lower() == "unknown" and value != "unknown")
+    ):
+        raise AnnotationError("exercise_id must match F2's ID pattern or lowercase 'unknown'.")
+    return value
 
 
 def read_annotations(
     path: Path, id_pointer: str, fields: Sequence[FieldSpec]
 ) -> Annotations:
-    """Read selected categorical labels; never infer missing labels or IDs."""
+    """Read selected fields; explicit nulls count, missing keys and IDs fail."""
     pointer_parts(id_pointer)
     if not fields or len({field.name for field in fields}) != len(fields):
         raise AnnotationError("Select at least one field, with no duplicate names.")
     for field in fields:
-        if field.name not in CATEGORICAL_VALUES:
-            raise AnnotationError("Unsupported categorical field.")
+        if field.name not in EXTRACTION_FIELDS:
+            raise AnnotationError("Unsupported extraction field.")
         pointer_parts(field.pointer)
 
     annotations: Annotations = {}
@@ -188,26 +257,10 @@ def read_annotations(
                     )
                 if item_key in annotations:
                     raise AnnotationError("Duplicate item identifier.")
-                labels: dict[str, str] = {}
+                labels: dict[str, Category] = {}
                 for field in fields:
                     value = lookup_pointer(record, field.pointer)
-                    allowed = CATEGORICAL_VALUES[field.name]
-                    if not isinstance(value, str) or not value.strip():
-                        raise AnnotationError(
-                            f"{field.name} must be a non-empty categorical string."
-                        )
-                    if allowed is not None and value not in allowed:
-                        raise AnnotationError(
-                            f"{field.name} is outside the F2 specified enum."
-                        )
-                    if field.name == "exercise_id" and (
-                        not re.fullmatch(EXERCISE_ID_PATTERN, value)
-                        or (value.lower() == "unknown" and value != "unknown")
-                    ):
-                        raise AnnotationError(
-                            "exercise_id must match F2's ID pattern or lowercase 'unknown'."
-                        )
-                    labels[field.name] = value
+                    labels[field.name] = _label_category(field.name, value)
                 annotations[item_key] = labels
             except AnnotationError as exc:
                 raise AnnotationError(f"{location}: {exc}") from exc
@@ -216,7 +269,7 @@ def read_annotations(
     return annotations
 
 
-def cohens_kappa(left: Sequence[str], right: Sequence[str]) -> KappaResult:
+def cohens_kappa(left: Sequence[Category], right: Sequence[Category]) -> KappaResult:
     """Compute unweighted nominal kappa with exact-count degeneracy detection."""
     if not left or len(left) != len(right):
         raise AnnotationError("Kappa requires non-empty, equally sized label lists.")
@@ -252,10 +305,10 @@ def compare_annotations(
     if not fields or len({field.name for field in fields}) != len(fields):
         raise AnnotationError("Select at least one field, with no duplicate names.")
     for field in fields:
-        if field.name not in CATEGORICAL_VALUES:
-            raise AnnotationError("Unsupported categorical field.")
+        if field.name not in EXTRACTION_FIELDS:
+            raise AnnotationError("Unsupported extraction field.")
         if any(field.name not in labels for labels in (*left.values(), *right.values())):
-            raise AnnotationError("A selected categorical label is missing.")
+            raise AnnotationError("A selected extraction label is missing.")
     only_left = left.keys() - right.keys()
     only_right = right.keys() - left.keys()
     if only_left or only_right:
@@ -264,11 +317,24 @@ def compare_annotations(
             f"{len(only_left)} only in A; {len(only_right)} only in B."
         )
     results: dict[str, FieldReport] = {}
+    numeric_results: dict[str, NumericFieldReport] = {}
     review_required = False
     for field in fields:
         labels_left = [labels[field.name] for labels in left.values()]
         labels_right = [right[item_key][field.name] for item_key in left]
         result = cohens_kappa(labels_left, labels_right)
+        metrics: KappaMetrics = {
+            "n_items": result.n_items,
+            "agreements": result.agreements,
+            "observed_agreement": result.observed_agreement,
+            "expected_agreement": result.expected_agreement,
+            "kappa": result.kappa,
+        }
+        if field.name in NUMERIC_FIELDS:
+            numeric_results[field.name] = {
+                **metrics, "status": "undefined" if result.kappa is None else "reported_only",
+            }
+            continue  # Numeric kappa never inherits the headline acceptance threshold.
         status: AgreementStatus
         if result.kappa is None:
             status = "undefined"
@@ -277,11 +343,7 @@ def compare_annotations(
         else:
             status = "below_threshold"
         details: FieldReport = {
-            "n_items": result.n_items,
-            "agreements": result.agreements,
-            "observed_agreement": result.observed_agreement,
-            "expected_agreement": result.expected_agreement,
-            "kappa": result.kappa,
+            **metrics,
             "status": status,
         }
         if field.name == "triage_level":
@@ -296,6 +358,8 @@ def compare_annotations(
     return {
         "threshold": AGREEMENT_THRESHOLD,
         "fields": results,
+        "numeric_fields": numeric_results,
+        "unselected_headline_fields": sorted(HEADLINE_FIELDS - results.keys()),
         "review_required": review_required,
     }
 
@@ -304,13 +368,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Match two independent JSONL label files by identifier and report "
-            "unweighted categorical Cohen's kappa. No message text is needed."
+            "nominal unweighted Cohen's kappa for all seven extraction fields. "
+            "Numeric fields use exact values, source units and explicit null categories. No message text is needed."
         ),
         epilog=(
-            "Exit 0: threshold met, no red disagreement; 1: review needed "
-            "(below 0.70, undefined, or red disagreement); 2: invalid input. "
-            "F2 v0 categorical values and exercise-ID shape are checked; canonical "
-            "ID membership, numeric agreement and the headline-field list need coordination."
+            "Exit 0: selected headlines meet 0.70 with no red disagreement, or numeric-only report; "
+            "1: headline review needed (below 0.70, undefined, or red disagreement); 2: invalid input. "
+            "Numeric kappa has no acceptance threshold. Canonical ID membership needs the pinned vocabulary."
         ),
     )
     parser.add_argument("annotator_a", type=Path)
@@ -326,8 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="NAME=/POINTER",
         help=(
-            "Repeat for each categorical field: exercise_id, "
-            "kinematic_observation, outcome, triage_level. "
+            "Repeat for any of: " + ", ".join(EXTRACTION_FIELDS) + ". "
             "Example: --field triage_level=/labels/triage_level"
         ),
     )
@@ -347,7 +410,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report, indent=2, allow_nan=False))
     else:
-        print(f"Cohen's kappa; agreement threshold >= {AGREEMENT_THRESHOLD:.2f}")
+        print(f"Cohen's kappa; headline agreement threshold >= {AGREEMENT_THRESHOLD:.2f}")
+        print("Headline fields:")
         for name, details in report["fields"].items():
             value = details["kappa"]
             rendered = f"{value:.6f}" if value is not None else "undefined (Pe = 1)"
@@ -363,10 +427,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "  red-vs-not-red disagreements requiring adjudication: "
                     f"{details['red_vs_not_red_disagreements']}"
                 )
-        print("Human review required." if report["review_required"] else "Threshold met.")
+        print("Numeric fields (exact match, null included; no acceptance threshold):")
+        for name, details in report["numeric_fields"].items():
+            value = details["kappa"]
+            rendered = f"{value:.6f}" if value is not None else "undefined (Pe = 1)"
+            print(
+                f"{name}: n={details['n_items']}, agreements={details['agreements']}, "
+                f"Po={details['observed_agreement']:.6f}, Pe={details['expected_agreement']:.6f}, "
+                f"kappa={rendered}, {details['status']}"
+            )
+        if report["review_required"]:
+            print("Human review required for selected headline fields.")
+        elif report["fields"]:
+            print("Selected headline fields meet the threshold.")
+        else:
+            print("No headline fields selected; numeric report only, no headline acceptance decision.")
+        if report["unselected_headline_fields"]:
+            print("Unselected headline fields: " + ", ".join(report["unselected_headline_fields"]))
         print(
-            "Scope: selected F2 v0 categorical fields and exercise-ID shape; canonical ID membership, numeric "
-            "agreement and final headline selection remain [TO VERIFY]."
+            "Scope: selected F2 v0 fields; numeric exact-match convention awaits final team confirmation. "
+            "A report on a subset does not establish pilot acceptance across all four headline fields."
         )
     return 1 if report["review_required"] else 0
 
