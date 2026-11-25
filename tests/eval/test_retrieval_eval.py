@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.exercises.loader import load_exercises
 from src.eval.retrieval import (
     is_chunk_relevant,
     load_dev_queries,
@@ -69,3 +70,21 @@ def test_ties_go_to_smaller_model() -> None:
     ]
     ranked = rank_variants_with_size_tiebreak(rows)
     assert ranked[0]["embedder"] == "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def test_dev_spans_are_whole_paragraphs_of_the_committed_documents() -> None:
+    root = Path(__file__).resolve().parents[2]
+    docs = {p.name.split("-")[0]: p.read_text(encoding="utf-8") for p in (root / "docs" / "knowledge").glob("syn*.md")}
+    for q in load_dev_queries(root / "data" / "dev" / "rag_queries.jsonl"):
+        if q["corpus"] != "synthesis":
+            continue
+        text = docs[q["doc_id"]]
+        assert text[q["char_start"] - 2 : q["char_start"]] == "\n\n", q["query_id"]
+        assert text[q["char_end"] :].strip() == "" or text[q["char_end"] : q["char_end"] + 2] == "\n\n", q["query_id"]
+
+
+def test_dev_exercise_labels_exist() -> None:
+    root = Path(__file__).resolve().parents[2]
+    ids = set(load_exercises())
+    queries = load_dev_queries(root / "data" / "dev" / "rag_queries.jsonl")
+    assert {q["exercise_id"] for q in queries if q["corpus"] == "exercises"} <= ids

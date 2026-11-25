@@ -87,7 +87,10 @@ def evaluate_corpus(
     mode: RetrievalMode,
     top_k: int = 5,
 ) -> RetrievalMetrics:
-    """Evaluate Recall@3, Recall@5, and MRR for a single corpus."""
+    """Evaluate Recall@3, Recall@5, and MRR for a single corpus.
+
+    Recall@k is the share of queries with at least one relevant chunk in the top k (each query has one labeled span).
+    """
     corpus_queries = [q for q in queries if q["corpus"] == corpus]
     if not corpus_queries:
         return RetrievalMetrics(
@@ -170,7 +173,8 @@ def run_e1_pruning(
     exercise_rows: list[dict[str, Any]] = []
     synthesis_rows: list[dict[str, Any]] = []
 
-    with tempfile.TemporaryDirectory(prefix="e1_pruning_") as tmp_root:
+    # Chroma keeps its files open on Windows, so cleanup errors are ignored
+    with tempfile.TemporaryDirectory(prefix="e1_pruning_", ignore_cleanup_errors=True) as tmp_root:
         tmp_path = Path(tmp_root)
 
         for emb_cfg in embedders_cfg:
@@ -223,6 +227,7 @@ def run_e1_pruning(
                     chunking=chunking,
                     include_exercises=False,
                     include_synthesis=True,
+                    include_drafts=True,  # dev experiment, nothing is cited
                 )
                 syn_retriever = HybridRetriever(
                     ChromaVectorStore(syn_idx_dir / "chroma", embedder),
@@ -251,13 +256,13 @@ def run_e1_pruning(
     ranked_syn = rank_variants_with_size_tiebreak(synthesis_rows)
     results = {"exercises": ranked_ex, "synthesis": ranked_syn}
 
-    (out_dir / "metrics.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+    (out_dir / "metrics.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8", newline="\n")
 
     all_rows = ranked_ex + ranked_syn
     if all_rows:
         fieldnames = list(all_rows[0].keys())
         with (out_dir / "metrics.csv").open("w", encoding="utf-8", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer = csv.DictWriter(fh, fieldnames=fieldnames, lineterminator="\n")
             writer.writeheader()
             writer.writerows(all_rows)
 
