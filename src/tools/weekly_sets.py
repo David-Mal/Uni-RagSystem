@@ -18,26 +18,17 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
-from src.exercises.loader import Exercise, load_exercises, muscle_weights
-from src.tools._common_provisional import (
+from src.exercises.loader import Exercise, Muscle, load_exercises
+from src.tools.common import (
     Provenance,
     ToolResult,
     Value,
     ValueIdFactory,
     config_hash,
+    load_indicator_config,
 )
 
-TOOL_VERSION = "weekly_sets_per_muscle-0.1.0"
-
-DEFAULT_CONFIG: dict[str, Any] = {
-    "default_weeks": 6,
-    "min_effective_rpe": 7.0,
-    "week_start": "monday",
-    "primary_muscle_weight": 1.0,
-    "secondary_muscle_weight": 0.5,
-    "trend_flat_band": 0.5,
-}
-
+TOOL_VERSION = "weekly_sets_per_muscle-1.0.0"
 
 class SetStore(Protocol):
     """Minimal store interface compatible with D4's DuckDB store."""
@@ -62,7 +53,9 @@ class MuscleSummary(BaseModel):
 
     muscle: str
     total_sets: float
+    total_value_id: str
     mean_weekly_sets: float
+    mean_value_id: str
     trend: Literal["up", "flat", "down"]
 
 
@@ -110,25 +103,49 @@ def _trend_direction(series: Sequence[float], flat_band: float) -> Literal["up",
     return "flat"
 
 
+def _trend_series(series: Sequence[float], last_week_complete: bool) -> list[float]:
+    """Weeks with sets, for the trend label. An incomplete last week is left out if two other weeks remain."""
+    earlier = [v for v in series[:-1] if v > 0.0]
+    if not last_week_complete and len(earlier) >= 2:
+        return earlier
+    return [v for v in series if v > 0.0]
+
+
+def _weights(exercise: Exercise, primary: float, secondary: float) -> dict[Muscle, float]:
+    """Muscle weights of one exercise; a muscle listed as both counts as primary only (spec §4)."""
+    weights = {m: secondary for m in exercise.secondary_muscles}
+    weights.update({m: primary for m in exercise.primary_muscles})
+    return weights
+
+
 def weekly_sets_per_muscle(
     store: SetStore,
     log_id: str,
-    weeks: int = 6,
+    weeks: int | None = None,
     *,
     allowed_exercise_ids: Sequence[str] | None = None,
     as_of: date | None = None,
     exercises: Mapping[str, Exercise] | None = None,
     config: Mapping[str, Any] | None = None,
+    ids: ValueIdFactory | None = None,
 ) -> WeeklySetsResult:
-    """Compute effective sets per muscle per Monday-start week over the last ``weeks`` weeks."""
-    cfg = dict(DEFAULT_CONFIG)
+    """Compute effective sets per muscle per Monday-start week over the last ``weeks`` weeks.
+
+    ``config`` overrides single keys of the ``weekly_sets`` section. Pass the run's ``ids`` so that value ids stay unique
+    across tools.
+    """
+    cfg = dict(load_indicator_config()["weekly_sets"])
     if config is not None:
         cfg.update(config)
+    weeks = int(cfg["default_weeks"]) if weeks is None else weeks
+    if weeks < 1:
+        raise ValueError("weeks must be at least 1")
     cfg["weeks"] = weeks
     cfg_digest = config_hash(cfg)
 
     min_rpe = float(cfg["min_effective_rpe"])
     flat_band = float(cfg["trend_flat_band"])
+    primary, secondary = float(cfg["primary_muscle_weight"]), float(cfg["secondary_muscle_weight"])
     ex_map = exercises if exercises is not None else load_exercises()
     allowed_set = set(allowed_exercise_ids) if allowed_exercise_ids is not None else None
 
@@ -196,7 +213,7 @@ def weekly_sets_per_muscle(
             continue
 
         set_id = str(_get_field(row, "set_id") or f"row_{idx}")
-        weights = muscle_weights(ex_id, ex_map)
+        weights = _weights(ex_map[ex_id], primary, secondary)
         for muscle, weight in weights.items():
             key = (muscle.value, wk)
             totals[key] += weight
@@ -205,7 +222,7 @@ def weekly_sets_per_muscle(
     if unknown_names:
         flags_set.add("unknown_exercises_excluded")
 
-    id_factory = ValueIdFactory()
+    id_factory = ids or ValueIdFactory()
     values: list[Value] = []
     table: list[MuscleWeekCell] = []
 
@@ -219,11 +236,11 @@ def weekly_sets_per_muscle(
             values.append(
                 Value(
                     value_id=vid,
-                    name=f"weekly_sets_{muscle.replace(' ', '_')}_{wk}",
+                    name=f"weekly_sets_{muscle.replace(' ', '_')}_{wk.replace('-', '_')}",
                     value=val,
                     unit="effective_sets",
                     provenance=Provenance(
-                        formula="sum(1.0*primary + 0.5*secondary for effective sets in Monday-start week)",
+                        formula=f"sum({primary:g}*primary + {secondary:g}*secondary) of effective sets in the Monday-start week",
                         input_row_ids=list(row_ids.get((muscle, wk), [])),
                         tool_version=TOOL_VERSION,
                         config_hash=cfg_digest,
@@ -243,14 +260,33 @@ def weekly_sets_per_muscle(
     for muscle in muscles_present:
         series = [round(totals.get((muscle, wk), 0.0), 4) for wk in week_labels]
         total_sets = round(sum(series), 4)
-        active_weeks = [v for v in series if v > 0.0]
-        mean_sets = round(total_sets / len(week_labels), 2) if week_labels else 0.0
+        mean_sets = round(total_sets / len(week_labels), 2)
+        used = [i for wk in week_labels for i in row_ids.get((muscle, wk), [])]
+        summary_ids: list[str] = []
+        for kind, number, formula in (
+            ("total", total_sets, "sum of the weekly values"),
+            ("mean", mean_sets, "sum of the weekly values / weeks shown, rounded to 2 decimals"),
+        ):
+            summary_ids.append(id_factory.new(f"weekly_sets_{kind}"))
+            values.append(
+                Value(
+                    value_id=summary_ids[-1],
+                    name=f"weekly_sets_{kind}_{muscle.replace(' ', '_')}",
+                    value=number,
+                    unit="effective_sets",
+                    provenance=Provenance(
+                        formula=formula, input_row_ids=used, tool_version=TOOL_VERSION, config_hash=cfg_digest
+                    ),
+                )
+            )
         muscle_summaries.append(
             MuscleSummary(
                 muscle=muscle,
                 total_sets=total_sets,
+                total_value_id=summary_ids[0],
                 mean_weekly_sets=mean_sets,
-                trend=_trend_direction(active_weeks if len(active_weeks) >= 2 else series, flat_band),
+                mean_value_id=summary_ids[1],
+                trend=_trend_direction(_trend_series(series, latest_date.weekday() == 6), flat_band),
             )
         )
 
