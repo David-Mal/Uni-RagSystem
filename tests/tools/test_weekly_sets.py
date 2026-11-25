@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
+import pytest
+
+from src.tools.common import ValueIdFactory
 from src.tools.weekly_sets import weekly_sets_per_muscle
 
 
@@ -60,7 +64,8 @@ def test_hand_computed_bench_press_fixture() -> None:
 
     # Every cell has a unique value_id and provenance listing exactly s1, s2, s3
     value_ids = [v.value_id for v in res.values]
-    assert len(value_ids) == len(set(value_ids)) == 3
+    # 3 cells, plus total and mean for each of the 3 muscles
+    assert len(value_ids) == len(set(value_ids)) == 9
     for val in res.values:
         assert val.provenance.input_row_ids == ["s1", "s2", "s3"]
 
@@ -105,3 +110,55 @@ def test_multi_week_trend_upward() -> None:
     biceps_summary = next(m for m in res.summary["top_muscles"] if m["muscle"] == "biceps")
     assert biceps_summary["total_sets"] == 4.0
     assert biceps_summary["trend"] == "up"
+
+
+def _curl(day: datetime, i: int = 0, **kw: Any) -> dict[str, Any]:
+    base = {"set_id": f"{day:%m%d}_{i}", "workout_ts": day, "exercise_id": "Barbell_Curl", "set_type": "normal",
+            "reps": 10, "rpe": 8.0, "failed": False}  # fmt: skip
+    return base | kw
+
+
+def test_summary_numbers_are_values() -> None:
+    sets = [_curl(datetime(2026, 10, 5)), _curl(datetime(2026, 10, 12)), _curl(datetime(2026, 10, 12), 1)]
+    res = weekly_sets_per_muscle(InMemoryStore({"log1": sets}), "log1", weeks=2)
+    by_id = {v.value_id: v for v in res.values}
+    biceps = next(m for m in res.summary["top_muscles"] if m["muscle"] == "biceps")
+    assert by_id[biceps["total_value_id"]].value == biceps["total_sets"] == 3.0
+    assert by_id[biceps["mean_value_id"]].value == biceps["mean_weekly_sets"] == 1.5  # 3 sets / 2 weeks
+    assert all(re.fullmatch(r"[a-z0-9_]+", v.name) for v in res.values)
+
+
+def test_ids_continue_the_counter_of_the_run() -> None:
+    ids = ValueIdFactory()
+    ids.new("other")
+    res = weekly_sets_per_muscle(InMemoryStore({"log1": [_curl(datetime(2026, 10, 5))]}), "log1", ids=ids)
+    assert res.values[0].value_id == "v_weekly_sets_0002"
+
+
+def test_an_incomplete_last_week_is_not_a_drop() -> None:
+    weeks = [_curl(datetime(2026, 10, d), i) for d in (5, 12) for i in range(4)]
+    monday_only = [*weeks, _curl(datetime(2026, 10, 19))]
+    biceps = weekly_sets_per_muscle(InMemoryStore({"log1": monday_only}), "log1").summary["top_muscles"][0]
+    assert biceps["trend"] == "flat"
+    until_sunday = [*monday_only, _curl(datetime(2026, 10, 25), exercise_id="Barbell_Squat")]
+    summary = weekly_sets_per_muscle(InMemoryStore({"log1": until_sunday}), "log1").summary["top_muscles"]
+    assert next(m for m in summary if m["muscle"] == "biceps")["trend"] == "down"  # 4 -> 1
+
+
+def test_bodyweight_and_to_failure_sets_count_and_rpe_seven_is_inclusive() -> None:
+    day = datetime(2026, 10, 5)
+    sets = [_curl(day, 0, weight_kg=0), _curl(day, 1, set_type="failure"), _curl(day, 2, rpe=7.0), _curl(day, 3, rpe=6.9)]
+    res = weekly_sets_per_muscle(InMemoryStore({"log1": sets}), "log1")
+    assert next(c for c in res.table if c.muscle == "biceps").effective_sets == 3.0
+
+
+def test_weights_come_from_the_config() -> None:
+    res = weekly_sets_per_muscle(
+        InMemoryStore({"log1": [_curl(datetime(2026, 10, 5))]}), "log1", config={"secondary_muscle_weight": 0.25}
+    )
+    assert next(c for c in res.table if c.muscle == "forearms").effective_sets == 0.25
+
+
+def test_weeks_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="weeks"):
+        weekly_sets_per_muscle(InMemoryStore({}), "log1", weeks=0)

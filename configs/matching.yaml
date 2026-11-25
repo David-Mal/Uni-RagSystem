@@ -1,4 +1,6 @@
 # Configuration for match_exercise_rag cascade (issue M1, #32)
-fuzzy_threshold: 90.0
+fuzzy_threshold: 90.0   # token_set_ratio
+fuzzy_min_sort: 80.0    # token_sort_ratio, rejects subsets such as "Row"
+fuzzy_margin: 3.0       # lead over the next candidate, otherwise ambiguous -> unknown
 retrieval_threshold: 0.65
 top_k: 5

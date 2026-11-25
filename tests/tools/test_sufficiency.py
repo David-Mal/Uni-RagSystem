@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
-from src.tools.sufficiency import check_data_sufficiency
+import pytest
+
+from src.ingest import ingest_workout_log, open_store
+from src.tools.common import ValueIdFactory
+from src.tools.sufficiency import check_data_sufficiency, load_sufficiency_config
 
 
 class InMemoryStore:
@@ -46,7 +51,7 @@ def _make_set(
 
 
 def _full_valid_log() -> list[dict[str, Any]]:
-    # 6 sessions spaced 7 days apart -> span = 35 days (exact 5 weeks), no gap > 14d,
+    # 6 sessions spaced 7 days apart -> 36 days covered (>= 35), no gap > 14d,
     # 6 sessions in last 6 weeks (>= 4), 100% RPE, 6 comparable-load sessions.
     return [_make_set(day_offset=d) for d in (0, 7, 14, 21, 28, 35)]
 
@@ -60,9 +65,9 @@ def test_all_checks_pass_at_exact_boundaries() -> None:
     assert set(res.allowed_analyses) == {"e1rm_trend", "rpe_drift", "weekly_volume", "load_ratio"}
 
 
-def test_history_span_boundary_34_vs_35_days() -> None:
-    # 34 days -> just below 5 weeks (35 days): load_ratio blocked, partial abstention
-    sets_34 = [_make_set(day_offset=d) for d in (0, 7, 14, 21, 28, 34)]
+def test_history_boundary_34_vs_35_days_covered() -> None:
+    # First and last date 33 days apart -> 34 days covered, below 5 weeks (35): load_ratio blocked
+    sets_34 = [_make_set(day_offset=d) for d in (0, 7, 14, 21, 28, 33)]
     res_34 = check_data_sufficiency(InMemoryStore({"log1": sets_34}), "log1")
     assert res_34.sufficient is True
     assert res_34.partial_abstention is True
@@ -70,9 +75,71 @@ def test_history_span_boundary_34_vs_35_days() -> None:
     assert "e1rm_trend" in res_34.allowed_analyses
     assert any("34 days" in r for r in res_34.reasons)
 
-    # 35 days -> exact boundary passes
-    res_35 = check_data_sufficiency(InMemoryStore({"log1": _full_valid_log()}), "log1")
+    # 34 days apart -> 35 days covered, the exact boundary passes (same bound as the load tool, spec §5)
+    sets_35 = [_make_set(day_offset=d) for d in (0, 7, 14, 21, 28, 34)]
+    res_35 = check_data_sufficiency(InMemoryStore({"log1": sets_35}), "log1")
     assert "load_ratio" in res_35.allowed_analyses
+
+
+def test_window_is_days_0_to_41() -> None:
+    later = [_make_set(d) for d in (14, 28, 42)]
+    # day 1 is 41 days before the last set, so it is in the window: 4 sessions
+    assert "e1rm_trend" in check_data_sufficiency(
+        InMemoryStore({"log1": [_make_set(1), *later]}), "log1"
+    ).allowed_analyses
+    # day 0 is 42 days before: 3 sessions
+    assert "e1rm_trend" not in check_data_sufficiency(
+        InMemoryStore({"log1": [_make_set(0), *later]}), "log1"
+    ).allowed_analyses
+
+
+def test_spec_worked_example() -> None:
+    # Sessions 34, 20, 10 and 0 days before the last one, no RPE
+    sets = [_make_set(d, rpe=None) for d in (0, 14, 24, 34)]
+    res = check_data_sufficiency(InMemoryStore({"log1": sets}), "log1")
+    assert res.allowed_analyses == ["weekly_volume", "load_ratio", "e1rm_trend"]
+    assert res.reasons == ["RPE logged on 0 of 4 working sets; RPE drift not assessed"]
+    first_later = [_make_set(d, rpe=None) for d in (1, 14, 24, 34)]
+    res = check_data_sufficiency(InMemoryStore({"log1": first_later}), "log1")
+    assert "load_ratio" not in res.allowed_analyses and len(res.reasons) == 2
+
+
+def test_no_exercise_is_eligible_below_the_session_minimum() -> None:
+    res = check_data_sufficiency(InMemoryStore({"log1": [_make_set(d) for d in (0, 7, 14)]}), "log1")
+    assert res.sufficient is True
+    assert res.eligible_exercise_ids == []
+
+
+def test_values_have_ids_and_provenance() -> None:
+    ids = ValueIdFactory()
+    ids.new("other")
+    res = check_data_sufficiency(InMemoryStore({"log1": _full_valid_log()}), "log1", ids=ids)
+    assert [(v.name, v.value) for v in res.values] == [
+        ("history_days_covered", 36),
+        ("largest_gap_days", 7),
+        ("window_working_sets", 6),
+        ("rpe_logged_sets", 6),
+        ("comparable_load_sessions", 6),
+    ]
+    assert res.values[0].value_id == "v_history_days_covered_0002"
+    assert all(len(v.provenance.input_row_ids) == 6 for v in res.values)
+
+
+def test_real_export_is_a_partial_abstention() -> None:
+    path = Path(__file__).resolve().parents[2] / "data" / "fixtures" / "opengym" / "fineas_anonymized.csv"
+    with open_store() as db:
+        ingest_workout_log(path, log_id="f", store=db, matcher={"Barbell Bench Press": "Bench"}.get)
+        res = check_data_sufficiency(db, "f")
+    # 2026-10-26 to 2026-11-24 covers 30 days, and RPE is never logged
+    assert res.allowed_analyses == ["weekly_volume", "e1rm_trend"]
+    assert res.values[0].value == 30 and res.eligible_exercise_ids == ["Bench"]
+
+
+def test_missing_config_key_is_an_error(tmp_path: Path) -> None:
+    path = tmp_path / "c.yaml"
+    path.write_text("sufficiency: {}\n", encoding="utf-8")
+    with pytest.raises(KeyError):
+        load_sufficiency_config(path)
 
 
 def test_sessions_per_exercise_boundary_3_vs_4() -> None:

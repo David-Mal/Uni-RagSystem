@@ -2,12 +2,12 @@
 
 ## Scope & Inputs
 
-- **Cascade configuration:** `configs/matching.yaml` (`fuzzy_threshold = 90.0`, `retrieval_threshold = 0.65`, `top_k = 5`)
+- **Cascade configuration:** `configs/matching.yaml` (`fuzzy_threshold = 90.0`, `fuzzy_min_sort = 80.0`, `fuzzy_margin = 3.0`, `retrieval_threshold = 0.65`, `top_k = 5`)
 - **Alias dictionary:** `data/exercises/aliases.yaml` (seeded from F1 `data/exercises/seed_names.txt` + common abbreviations)
-- **Vocabulary:** `data/exercises/free-exercise-db.json` (876 exercises, commit `f00c92c7dcf1216a928a52c7ce8e2f71ed5`)
+- **Vocabulary:** `data/exercises/free-exercise-db.json` (876 exercises, commit `f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5`)
 - **Real exports evaluated:**
-  - **Fineas's OpenGym export (F1):** 41 distinct exercise names (`data/exercises/seed_names.txt`)
-  - **David's OpenGym export (D2):** Pending D2 merge into `main`; this report will be updated with David's distinct exercise names once D2 lands.
+  - **Fineas (F1):** 21 distinct exercise names. **David (D2):** 27. 7 are shared, so 41 distinct names in total, the same set as `data/exercises/seed_names.txt`.
+  - Checked against the committed fixtures by `test_every_name_of_the_real_exports`.
 
 ## Stage Attribution Summary (Stages 1–2, without Stage 3 retrieval)
 

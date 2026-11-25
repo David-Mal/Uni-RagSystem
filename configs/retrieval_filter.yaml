@@ -12,6 +12,12 @@ rejected_patterns:
   - '\bswollen\b'
   - '\bache(s|d|ing)?\b'
   - '\baching\b'
+  - '\bachy\b'
+  - '\bdiscomfort\b'
+  - '\bsore(ness)?\b'
+  - '\bstiff(ness)?\b'
+  - '\btwinge(s)?\b'
+  - '\bsymptom(s)?\b'
   - '\btear(s|ing)?\b'
   - '\btorn\b'
   - '\btendin(itis|opathy)\b'
@@ -33,13 +39,3 @@ rejected_patterns:
   - '\bdislocat(ed|ion)\b'
   - '\bfracture(d|s)?\b'
   - '\bherniat(ed|ion)\b'
-
-# Mapping from the 7 closed hypotheses (plan §5.6) to allowed synthesis topic_tags (TAGS.md)
-hypothesis_to_topic_tags:
-  insufficient_weekly_volume: ["volume"]
-  fatigue_accumulation: ["rpe", "fatigue_load"]
-  stagnant_load_progression: ["progression", "intensity"]
-  load_spike: ["load_monitoring", "fatigue_load"]
-  inconsistent_frequency: ["frequency"]
-  logging_quality_issue: ["logging"]
-  confounder_present: ["confounders"]

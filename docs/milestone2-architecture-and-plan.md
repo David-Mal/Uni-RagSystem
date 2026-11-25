@@ -152,21 +152,23 @@ Notes are sparse (typically a handful per workout), so extraction cost scales wi
 
 **Column mappings.** Neither app publishes an official export schema that we could find. The mappings below come from community sources. **They will be confirmed against real, anonymized exports from team members in Week 6** and committed as fixtures together with the adapters. `[TO VERIFY against real exports]`
 
-| Field (internal) | Strong CSV (community-reported header) | Hevy CSV (community-reported header) |
-|---|---|---|
-| workout timestamp | `Date` | `start_time` (`end_time` also present) |
-| workout name | `Workout Name` | `title` |
-| workout duration | `Duration` | derived from `start_time`, `end_time` |
-| exercise name | `Exercise Name` | `exercise_title` |
-| set index | `Set Order` | `set_index` |
-| set type (warm-up/normal/failure/drop) | not a separate column; encoding in `Set Order` `[TO VERIFY]` | `set_type` (value set `[TO VERIFY]`) |
-| weight | `Weight` (some exports `Weight (kg)`; unit depends on app settings `[TO VERIFY]`) | `weight_kg` or `weight_lbs` (unit in the column name) |
-| reps | `Reps` | `reps` |
-| RPE | `RPE` | `rpe` |
-| distance / time | `Distance`, `Seconds` | `distance_km`/`distance_miles`, `duration_seconds` |
-| exercise/set notes | `Notes` | `exercise_notes` |
-| workout notes | `Workout Notes` | `description` |
-| superset | n/a | `superset_id` |
+| Field (internal) | Strong CSV (community-reported header) | Hevy CSV (community-reported header) | OpenGym CSV (verified on two real exports) |
+|---|---|---|---|
+| workout timestamp | `Date` | `start_time` (`end_time` also present) | `start_time` (`date` is redundant) |
+| workout name | `Workout Name` | `title` | `workout` |
+| workout duration | `Duration` | derived from `start_time`, `end_time` | derived from `start_time`, `end_time` |
+| exercise name | `Exercise Name` | `exercise_title` | `exercise` (`exercise_id` is OpenGym's own catalog id) |
+| set index | `Set Order` | `set_index` | `set` |
+| set type (warm-up/normal/failure/drop) | not a separate column; encoding in `Set Order` `[TO VERIFY]` | `set_type` (value set `[TO VERIFY]`) | `set_type`: `normal`, `warmup`, `failure` (taken to failure, not failed); drop `[TO VERIFY]` |
+| weight | `Weight` (some exports `Weight (kg)`; unit depends on app settings `[TO VERIFY]`) | `weight_kg` or `weight_lbs` (unit in the column name) | `weight` + `unit` (per row; only `kg` seen) |
+| reps | `Reps` | `reps` | `reps` (0 = failed set) |
+| RPE | `RPE` | `rpe` | `rpe` (never filled; format `[TO VERIFY]`) |
+| distance / time | `Distance`, `Seconds` | `distance_km`/`distance_miles`, `duration_seconds` | `distance_km`, `seconds` (never filled) |
+| exercise/set notes | `Notes` | `exercise_notes` | `note`, `set_note` (never filled) |
+| workout notes | `Workout Notes` | `description` | `workout_note` (repeated on every row) |
+| superset | n/a | `superset_id` | `superset_id` (never filled) |
+
+The OpenGym column comes from [`docs/opengym-export-format.md`](opengym-export-format.md) (issues D2, F1). OpenGym is the app the team logs with, so it is the only format verified so far.
 
 Sources for the table: a Strong header quoted on the intervals.icu forum (<https://forum.intervals.icu/t/import-strong-data-weightlifting-app/5531>) and Hevy headers from community parsers. Hevy's help center documents the export path (Profile > Settings > Export & Import Data) but not the columns (<https://help.hevyapp.com/hc/en-us/articles/38001424401943>). We treat all of this as a hypothesis until real exports confirm it.
 
@@ -1051,5 +1053,6 @@ Bars mirror the §8.1 table; diamonds mark the two freezes and the Week 12 check
 | **Failure-precedence hierarchy** (unreadable > red > insufficient > yellow > green) | The RFC did not order conflicting outcomes; medical safety must supersede data sufficiency |
 | Triage classifier from a **different model family** than the extractor | Reduces correlated failures in "max of three" |
 | `output_verifier` and the gate live in the orchestrator, not as agent tools | Unbypassable by construction |
+| **OpenGym adapter** added because team logs come from OpenGym; Strong/Hevy kept | The team has real OpenGym exports and none from Strong or Hevy; the adapter pattern (§2.2) makes it one extra class. `[CONFIRM with instructor: OpenGym as the primary source]` |
 | Held-out RAG query set (60-100 queries, span-level relevance labels by non-builders) added to the golden set | E1 needs held-out retrieval ground truth; the RFC's golden set had no retrieval layer |
 | Closed hypothesis taxonomy of 7 labels with 3 evidence levels | The RFC said "labeled hypotheses" without a label set; needed for evaluation |

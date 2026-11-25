@@ -6,9 +6,20 @@ returned by ``MCPServer.list_tools()`` against the input models defined here.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from src.ingest import IngestResult
+from src.tools.common import ToolError
+from src.tools.e1rm import E1rmResult
+from src.tools.load import LoadResult
+from src.tools.match_exercise import MatchResult
+from src.tools.retrieve_knowledge import KnowledgeResult
+from src.tools.sufficiency import SufficiencyResult
+from src.tools.weekly_sets import WeeklySetsResult
+
+INGEST_TOOL_VERSION = "ingest_workout_log-1.0.0"
 
 
 class IngestWorkoutLogInput(BaseModel):
@@ -17,41 +28,13 @@ class IngestWorkoutLogInput(BaseModel):
     log_id: str | None = None
 
 
-class IngestWorkoutLogOutput(BaseModel):
-    tool_version: str
-    log_id: str
-    set_count: int
-    workout_count: int
-    unmatched_names: list[str] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)
-    flags: list[str] = Field(default_factory=list)
-
-
 class MatchExerciseInput(BaseModel):
     name: str
-
-
-class MatchExerciseOutput(BaseModel):
-    tool_version: str
-    exercise_id: str
-    stage: str
-    score: float
-    candidates: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CheckDataSufficiencyInput(BaseModel):
     log_id: str
     allowed_exercise_ids: list[str] | None = None
-
-
-class CheckDataSufficiencyOutput(BaseModel):
-    tool_version: str
-    sufficient: bool
-    partial_abstention: bool = False
-    reasons: list[str] = Field(default_factory=list)
-    allowed_analyses: list[str] = Field(default_factory=list)
-    eligible_exercise_ids: list[str] = Field(default_factory=list)
-    summary: dict[str, Any] = Field(default_factory=dict)
 
 
 class WeeklySetsInput(BaseModel):
@@ -64,11 +47,13 @@ class ComputeE1rmInput(BaseModel):
     log_id: str
     exercise_id: str
     bodyweight_kg: float | None = None
+    allowed_exercise_ids: list[str] | None = None
 
 
 class UncoupledLoadInput(BaseModel):
     log_id: str
-    metric: str = "tonnage"
+    metric: Literal["tonnage", "rpe_weighted"] = "tonnage"
+    allowed_exercise_ids: list[str] | None = None
 
 
 class RetrieveKnowledgeInput(BaseModel):
@@ -88,3 +73,23 @@ TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
     "uncoupled_load_analyzer": UncoupledLoadInput,
     "retrieve_knowledge": RetrieveKnowledgeInput,
 }
+
+
+class IngestWorkoutLogOutput(IngestResult):
+    tool_version: str
+
+
+class ToolErrorOutput(ToolError):
+    tool_version: str
+
+
+TOOL_OUTPUT_MODELS: dict[str, type[BaseModel]] = {
+    "ingest_workout_log": IngestWorkoutLogOutput,
+    "match_exercise_rag": MatchResult,
+    "check_data_sufficiency": SufficiencyResult,
+    "weekly_sets_per_muscle": WeeklySetsResult,
+    "compute_e1rm_and_drift": E1rmResult,
+    "uncoupled_load_analyzer": LoadResult,
+    "retrieve_knowledge": KnowledgeResult,
+}
+"""Successful outputs. Any tool may return ``ToolErrorOutput`` instead."""

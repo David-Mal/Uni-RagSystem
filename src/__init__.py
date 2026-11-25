@@ -1,1 +1,1 @@
-"""Heuristic Load & Fatigue Analyzer package."""
+"""Heuristic Load & Fatigue Analyzer: source package."""

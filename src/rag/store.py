@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field
 
 from src.rag.corpus import Chunk, filter_matches
 
-PINNED_CHROMA_VERSION = "1.5.9"
 DEFAULT_EMBEDDER_MODEL = "BAAI/bge-small-en-v1.5"
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -74,18 +73,21 @@ class HashEmbedder:
 
 
 class SentenceTransformerEmbedder:
-    """Sentence-Transformers embedder with automatic query/passage prefixes for e5 and nomic."""
+    """Sentence-Transformers embedder with automatic query/passage prefixes for e5 and nomic.
 
-    def __init__(self, model_name: str = DEFAULT_EMBEDDER_MODEL) -> None:
+    ``trust_remote_code`` runs code from the model repository (nomic needs it), so it is off unless asked for.
+    """
+
+    def __init__(self, model_name: str = DEFAULT_EMBEDDER_MODEL, *, trust_remote_code: bool = False) -> None:
         self.model_name = model_name
+        self._trust_remote_code = trust_remote_code
         self._model: Any = None
 
     def _load(self) -> Any:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
-            trust = "nomic" in self.model_name.lower()
-            self._model = SentenceTransformer(self.model_name, trust_remote_code=trust)
+            self._model = SentenceTransformer(self.model_name, trust_remote_code=self._trust_remote_code)
         return self._model
 
     def format_document(self, text: str) -> str:
@@ -141,7 +143,7 @@ def _deserialize_metadata(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class ChromaVectorStore:
-    """Thin 2-method wrapper (``upsert``, ``query``) over persistent ChromaDB."""
+    """Thin wrapper over persistent ChromaDB: ``upsert`` and ``query``, plus maintenance for the build."""
 
     def __init__(
         self,
@@ -158,6 +160,25 @@ class ChromaVectorStore:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+
+    def stored_hashes(self) -> dict[str, str]:
+        """Chunk id -> content hash of everything in the collection."""
+        res = self._collection.get(include=["metadatas"])
+        return {
+            str(i): str((m or {}).get("content_hash", ""))
+            for i, m in zip(res["ids"], res["metadatas"] or [], strict=True)
+        }
+
+    def delete(self, chunk_ids: Sequence[str]) -> None:
+        """Remove chunks, so that deleted or no longer approved text cannot be retrieved."""
+        if chunk_ids:
+            self._collection.delete(ids=list(chunk_ids))
+
+    def reset(self) -> None:
+        """Drop all chunks, needed when the embedding model (and its dimension) changes."""
+        name = self._collection.name
+        self._client.delete_collection(name)
+        self._collection = self._client.get_or_create_collection(name=name, metadata={"hnsw:space": "cosine"})
 
     def upsert(self, chunks: Sequence[Chunk]) -> int:
         """Embed and upsert ``chunks`` into Chroma; returns number of chunks upserted."""
