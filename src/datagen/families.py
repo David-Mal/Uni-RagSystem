@@ -127,7 +127,7 @@ def _terse_log(s: Slots, rng: random.Random) -> str:
 
 
 def _formal_sentence(s: Slots, rng: random.Random) -> str:
-    first = f"Today I performed {s.exercise}" if s.exercise else "Today I completed my working sets"
+    first = f"Today I performed {s.exercise}" if s.exercise else "Today I trained"
     if s.load:
         first += f" with {fmt_load(s.load, 'formal')}"
     if s.reps is not None and s.outcome is Outcome.COMPLETED:
@@ -284,6 +284,49 @@ def _diary(s: Slots, rng: random.Random) -> str:
     return _sentences([main, *clauses(s)])
 
 
+# ---------------------------------------------------------------- hard-negative renderers (own styles)
+
+
+def _hype_exclaim(s: Slots, rng: random.Random) -> str:
+    """Train HN figurative: hyped exclamations, all clauses shouted with '!!'."""
+    core = _ex(s, "today").upper() if rng.random() < 0.3 else _ex(s, "today")
+    if s.load:
+        core += f" {fmt_load(s.load, 'spaced')}"
+    if s.reps is not None and s.outcome is Outcome.COMPLETED:
+        core += f" for {s.reps}"
+    if s.rpe is not None:
+        core += f" {fmt_rpe(s.rpe, 'at')}"
+    return " ".join([f"{core}!!", *(f"{c}!!" for c in clauses(s))])
+
+
+def _reassurance_update(s: Slots, rng: random.Random) -> str:
+    """Train HN negated: an update that starts with how the body is, then the numbers in brackets."""
+    body = "; ".join(clauses(s)) or "nothing to report"
+    details = [
+        x
+        for x in (
+            s.exercise,
+            fmt_load(s.load, "spaced") if s.load else None,
+            f"{s.reps} reps" if s.reps is not None and s.outcome is Outcome.COMPLETED else None,
+            fmt_rpe(s.rpe, "upper") if s.rpe is not None else None,
+        )
+        if x
+    ]
+    return f"Status: {body}." + (f" ({', '.join(details)})" if details else "")
+
+
+def _text_lol(s: Slots, rng: random.Random) -> str:
+    """Dev HN mixed: texting style ending in lol/haha, no capitals."""
+    core = _ex(s, "gym")
+    if s.load:
+        core += f" {fmt_load(s.load, 'tight')}"
+    if s.reps is not None and s.outcome is Outcome.COMPLETED:
+        core += f" {s.reps}x"
+    if s.rpe is not None:
+        core += f" {fmt_rpe(s.rpe, 'lower')}"
+    return (" .. ".join([core, *clauses(s)]) + " " + rng.choice(("lol", "haha", "lmao"))).lower()
+
+
 # ---------------------------------------------------------------- registry of families
 
 FAMILIES: dict[str, PhrasingFamily] = {
@@ -302,15 +345,15 @@ FAMILIES: dict[str, PhrasingFamily] = {
         PhrasingFamily(
             "pf_tr_hn_figurative",
             "train",
-            "hard negatives: hyperbole about effort",
-            _terse_log,
+            "hard negatives: hyperbole about effort, exclamations",
+            _hype_exclaim,
             hard_negative="figurative",
         ),
         PhrasingFamily(
             "pf_tr_hn_negated",
             "train",
-            "hard negatives: explicit negation of pain",
-            _formal_sentence,
+            "hard negatives: explicit negation of pain, status update",
+            _reassurance_update,
             hard_negative="negated",
         ),
         PhrasingFamily("pf_dev_gym_chat", "dev", "chatty gym-buddy message with an opener", _gym_chat),
@@ -319,8 +362,8 @@ FAMILIES: dict[str, PhrasingFamily] = {
         PhrasingFamily(
             "pf_dev_hn_mixed",
             "dev",
-            "hard negatives: figurative or negated, chat style",
-            _gym_chat,
+            "hard negatives: figurative or negated, texting style",
+            _text_lol,
             hard_negative="mixed",
         ),
     )

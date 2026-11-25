@@ -16,7 +16,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
+import tempfile
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +52,7 @@ P_RPE = 0.45
 P_OUTCOME = {Outcome.COMPLETED: 0.80, Outcome.PARTIAL: 0.10, Outcome.FAILED: 0.10}
 P_KINEMATIC_NONE = 0.55
 P_RED_SYSTEMIC = 0.30
+P_RED_DISTRACTOR = 0.15  # red items whose real red symptom follows a negated or figurative clause
 P_HARD_NEGATIVE = {TriageLevel.GREEN: 0.25, TriageLevel.YELLOW: 0.15, TriageLevel.RED: 0.0}
 GENERIC_BODY_PARTS = ("knee", "shoulder", "lower back", "elbow", "hip", "wrist")
 
@@ -108,29 +111,44 @@ def _families_for(pool: str, registry: PoolRegistry, hard_negative: bool, task: 
     return out
 
 
-def _symptom(level: TriageLevel, part: str, hn_kind: str | None, rng: random.Random, reps: int | None) -> str:
-    """Sample the triage-bearing clause (symptom, positive, figurative or negated).
+def _symptom(
+    level: TriageLevel,
+    part: str,
+    hn_kind: str | None,
+    rng: random.Random,
+    clauses: vocab.ClauseVocab,
+    reps_word: str | None,
+    allow_positive: bool,
+) -> str:
+    """Sample the triage-bearing clause from the pool's own vocabulary.
 
     ``hn_kind`` is the family's hard-negative kind (``figurative``, ``negated``, ``mixed``) or ``None``.
+    ``reps_word`` is the labeled completed rep count as a word, or ``None``: templates that mention a rep number are
+    only used when it is set, so the text never invents a number. ``allow_positive`` is false for failed or partial
+    sets and for sets with a kinematic observation, where "moved well" or "felt strong" would contradict the text.
     """
-    reps_word = vocab.NUMBER_WORDS.get(reps or 0, "three")
     kind = rng.choice(("figurative", "negated")) if hn_kind == "mixed" else hn_kind
+
+    def pick(options: tuple[str, ...]) -> str:
+        usable = [o for o in options if reps_word is not None or "{reps_word}" not in o]
+        return rng.choice(usable).format(part=part, reps_word=reps_word or "")
+
     if level is TriageLevel.GREEN:
         if kind == "figurative":
-            return rng.choice(vocab.FIGURATIVE).format(reps_word=reps_word)
+            return pick(clauses.figurative)
         if kind == "negated":
-            return rng.choice(vocab.NEGATED).format(part=part)
-        return rng.choice(vocab.GREEN_POSITIVE)
+            return pick(clauses.negated)
+        return pick(clauses.green_positive) if allow_positive else ""
     if level is TriageLevel.YELLOW:
-        if kind is not None:
-            if kind == "negated":
-                return rng.choice(vocab.NEGATED_RED_PLUS_MILD).format(part=part)
-            fig = rng.choice(vocab.FIGURATIVE).format(reps_word=reps_word)
-            return f"{fig}, and {rng.choice(vocab.YELLOW_SYMPTOMS).format(part=part)}"
-        return rng.choice(vocab.YELLOW_SYMPTOMS).format(part=part)
-    if rng.random() < P_RED_SYSTEMIC:
-        return rng.choice(vocab.RED_SYSTEMIC)
-    return rng.choice(vocab.RED_SYMPTOMS).format(part=part)
+        if kind == "negated":
+            return pick(clauses.negated_red_plus_mild)
+        if kind == "figurative":
+            return f"{pick(clauses.figurative)}, and {pick(clauses.yellow)}"
+        return pick(clauses.yellow)
+    red = pick(clauses.red_systemic) if rng.random() < P_RED_SYSTEMIC else pick(clauses.red)
+    if rng.random() < P_RED_DISTRACTOR:
+        return f"{pick(clauses.red_distractor)}, but {red}"
+    return red
 
 
 def generate_item(
@@ -154,9 +172,10 @@ def generate_item(
     rng = random.Random(key)
 
     hard_negative = rng.random() < P_HARD_NEGATIVE[level]
-    families = _families_for(pool, registry, hard_negative, task) or _families_for(pool, registry, False, task)
+    families = _families_for(pool, registry, hard_negative, task)
     if not families:
-        raise PoolError(f"no phrasing family of this generator is in the {pool!r} pool of the manifest")
+        kind = "hard-negative" if hard_negative else "regular"
+        raise PoolError(f"no {kind} phrasing family of this generator is in the {pool!r} pool of the manifest")
     family = rng.choice(families)
     hn_kind = family.hard_negative
     personas = registry.members("personas", pool)
@@ -182,16 +201,17 @@ def generate_item(
         lo, hi = ex.load_kg
         kg = rng.uniform(lo, hi) * persona_strength(persona_id)
         load = _round_load(kg, "lb" if rng.random() < P_LB else "kg")
+    clauses = vocab.CLAUSES[pool]
     outcome: Outcome = _weighted(rng, P_OUTCOME)
     reps: int | None = None
     outcome_phrase = ""
     if outcome is Outcome.FAILED:
-        reps = 0  # convention: a failed attempt completed 0 reps (see docs/datagen-messages.md)
-        outcome_phrase = rng.choice(vocab.OUTCOME_PHRASES[Outcome.FAILED])
+        # No count is written for a failed attempt, so reps stays null (a missing number is not zero).
+        outcome_phrase = rng.choice(clauses.outcome[Outcome.FAILED])
     elif outcome is Outcome.PARTIAL:
         reps = rng.randint(1, 8)
         planned = reps + rng.randint(1, 3)
-        outcome_phrase = rng.choice(vocab.OUTCOME_PHRASES[Outcome.PARTIAL]).format(reps=reps, planned=planned)
+        outcome_phrase = rng.choice(clauses.outcome[Outcome.PARTIAL]).format(reps=reps, planned=planned)
     elif rng.random() < P_REPS:
         reps = rng.randint(1, 12)
     rpe = rng.choice([6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10]) if rng.random() < P_RPE else None
@@ -202,10 +222,15 @@ def generate_item(
     if rng.random() < P_KINEMATIC_NONE:
         kin = KinematicObservation.NONE
     else:
-        kin = rng.choice([k for k in KinematicObservation if k is not KinematicObservation.NONE])
-    kin_phrase = rng.choice(vocab.KINEMATIC_PHRASES[kin])
+        options = [k for k in KinematicObservation if k is not KinematicObservation.NONE]
+        if outcome is Outcome.FAILED:  # a grind implies the rep went up, which contradicts a failed attempt
+            options.remove(KinematicObservation.GRINDING_REP)
+        kin = rng.choice(options)
+    kin_phrase = rng.choice(clauses.kinematic[kin])
     part = rng.choice(vocab.SIDES) + rng.choice(ex.body_parts if ex else GENERIC_BODY_PARTS)
-    symptom = _symptom(level, part, hn_kind, rng, reps)
+    reps_word = vocab.NUMBER_WORDS.get(reps) if outcome is Outcome.COMPLETED and reps else None
+    allow_positive = outcome is Outcome.COMPLETED and kin is KinematicObservation.NONE
+    symptom = _symptom(level, part, hn_kind, rng, clauses, reps_word, allow_positive)
 
     slots = Slots(
         exercise=ex_text,
@@ -262,15 +287,25 @@ def generate(
 
 
 def write_jsonl(items: Iterator[dict[str, Any]] | list[dict[str, Any]], out: Path) -> int:
-    """Write items as UTF-8 JSONL with LF line endings; return the count."""
-    out.parent.mkdir(parents=True, exist_ok=True)
+    """Write items as UTF-8 JSONL with LF line endings; return the count.
+
+    The golden check runs before any directory is created. Items go to a temporary file that replaces ``out`` only
+    after every item was written, so an error mid-run leaves the previous file untouched.
+    """
     if "golden" in {part.lower() for part in out.resolve().parts}:
         raise PoolError("refusing to write generated data into data/golden/")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{out.name}.", suffix=".tmp", dir=out.parent)
     n = 0
-    with out.open("w", encoding="utf-8", newline="\n") as fh:
-        for item in items:
-            fh.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
-            n += 1
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            for item in items:
+                fh.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+                n += 1
+        os.replace(tmp, out)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return n
 
 
