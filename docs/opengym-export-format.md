@@ -1,19 +1,129 @@
 # OpenGym export format
 
-> The main sections of this document (how to export, field table, encoding of each canonical field, example rows,
-> quirks) are written in issue D2 (#3). This file currently holds only the section from issue F1 (#4). When D2 lands,
-> its sections go **above** this one.
+Ground truth for the OpenGym adapter (D5), the simulator (Fi2) and the tests. Everything below was read from two real
+exports: `data/fixtures/opengym/david_anonymized.csv` (211 rows, 26 columns) and
+`data/fixtures/opengym/fineas_anonymized.csv` (276 rows, 21 columns). Anything the files cannot show is marked
+`[TO VERIFY]`; do not guess it in code. Sections A-F come from D2; the numbered sections at the end are Fineas's
+comparison (F1).
+
+## A. How to export
+
+- David's export: OpenGym on **iOS**, made on 2026-11-25 with the app's own workout export. Exact menu path and app
+  version: `[TO VERIFY]`.
+- The app produces **one CSV file** with all workouts, named `opengym-workouts-YYYY-MM-DD.csv` (date of the export;
+  seen once, `[TO VERIFY]`).
+- Keep the raw file outside the repository. `scripts/anonymize_opengym.py` writes the committed fixture.
+
+**Anonymization of `david_anonymized.csv`:** no date shift, no blanked columns. The file holds no names, emails, account
+or device ids. The only free text is three workout names (`Upper1`, `UpperBody2`, `Vineri`) and two workout notes, kept
+on purpose because one of them is a real unit error. The fixture is therefore byte-identical to the app export.
+
+**What the fixture does not contain:** no session with RPE or RIR (never logged by either member), and no per-set note.
+Two sessions have a workout note. The log spans 2026-11-05 to 2026-11-25, about three weeks, so it is **shorter than the
+5 weeks of history** required by plan §2.5 and is a natural partial-abstention case.
+
+## B. File format
+
+| Property | Value |
+|---|---|
+| Type | CSV, one row per **set**, one header row |
+| Encoding | UTF-8 **with BOM** (`EF BB BF`); read with `utf-8-sig` |
+| Separator / line ending | `,` / CRLF, with a trailing newline |
+| Quoting | None seen. A note with a comma or a quote would need it; use a real CSV reader `[TO VERIFY]` |
+| Decimal mark | `.` (`12.5`); whole numbers have no decimals (`50`) |
+| Empty value | Empty cell. `0` is a real value, not "missing" |
+| Row order | By `start_time` ascending, then exercise order inside the workout, then `set` |
+
+## C. Columns
+
+Order as in David's file. Columns marked † are missing from Fineas's file, so map by **header name, never by position**.
+
+| Column | Type | Example | Unit | Nullable | Meaning |
+|---|---|---|---|---|---|
+| `date` | `YYYY-MM-DD` | `2026-11-05` | local date | no | Same day as `start_time` on every row |
+| `start_time` | `YYYY-MM-DD HH:MM` | `2026-11-05 14:22` | local time | no | Workout start, repeated on all rows of the workout |
+| `end_time` | `YYYY-MM-DD HH:MM` | `2026-11-05 15:59` | local time | no | Workout end |
+| `workout` | text | `Upper1` | | no | Workout name; not unique |
+| `workout_note` | text | `Cable high row is lbs nu kg` | | yes | Note on the whole workout, **repeated on every row** |
+| `exercise` | text | `Cable Pulldown` | | no | Catalog name |
+| `exercise_id` | 4-digit text | `0198` | | no | OpenGym catalog id; keep leading zeros. **Not** a free-exercise-db id |
+| `body_part` | text | `back` | | no | Coarse catalog group |
+| `superset_id` | | (empty) | | yes | Never filled `[TO VERIFY]` |
+| `set` | integer | `1` | | no | 1-based, restarts for each exercise of a workout, no gaps |
+| `set_type` | enum | `normal` | | no | `normal`, `warmup`, `failure` seen; others `[TO VERIFY]` |
+| `side` | | (empty) | | yes | Never filled `[TO VERIFY]` |
+| `weight` | number | `12.5` | see `unit` | no | `0` = no added load (bodyweight) |
+| `unit` | text | `kg` | | no | Per row; only `kg` seen. Spelling for pounds `[TO VERIFY]` |
+| `reps` | integer | `12` | | no | `0` = failed set |
+| `rpe` | | (empty) | | yes | Never filled `[TO VERIFY]` |
+| `rir` | | (empty) | | yes | Never filled `[TO VERIFY]` |
+| `distance_km` | | (empty) | km by name | yes | Never filled `[TO VERIFY]` |
+| `seconds` | | (empty) | s by name | yes | Never filled `[TO VERIFY]` |
+| `incline` | | (empty) | | yes | Never filled `[TO VERIFY]` |
+| `resistance_level` † | | (empty) | | yes | Never filled `[TO VERIFY]` |
+| `note` | | (empty) | | yes | Presumably the exercise note; never filled `[TO VERIFY]` |
+| `set_note` † | | (empty) | | yes | Presumably the set note; never filled `[TO VERIFY]` |
+| `tempo` †, `bands` †, `set_color` † | | (empty) | | yes | Never filled `[TO VERIFY]` |
+
+## D. Encoding and mapping to the canonical fields (plan §2.2, issue D4)
+
+| Canonical field | OpenGym source | Encoding |
+|---|---|---|
+| workout timestamp | `start_time` | Naive local time, minute resolution, **no timezone** |
+| workout duration | `end_time` - `start_time` | Derived |
+| workout name | `workout` | As is |
+| exercise name | `exercise` | As is; `exercise_id` is a better alias key than the name |
+| set index | `set` | 1-based per exercise and workout |
+| set type | `set_type` | `warmup` = warm-up, `normal` = normal, `failure` = **taken to failure, reps completed**. `drop`: `[TO VERIFY]` |
+| failed set | `reps` | `reps = 0`, on a `normal` row. **Not** `set_type=failure` |
+| weight | `weight` + `unit` | Unit is per row, not per profile |
+| reps | `reps` | Integer |
+| RPE | `rpe` | Never filled; value format `[TO VERIFY]` |
+| distance / time | `distance_km`, `seconds` | Never filled |
+| exercise / set notes | `note`, `set_note` † | Never filled |
+| workout notes | `workout_note` | Deduplicate to one note per workout |
+| superset | `superset_id` | Never filled |
+
+Every canonical field has an OpenGym column; a drop-set marker was not seen. OpenGym columns with no canonical field:
+`date` (redundant), `body_part`, `side`, `rir`, `incline`, `resistance_level`, `tempo`, `bands`, `set_color`.
+
+## E. Example rows (real)
+
+```
+date,start_time,end_time,workout,workout_note,exercise,exercise_id,body_part,superset_id,set,set_type,side,weight,unit,reps,rpe,rir,distance_km,seconds,incline,resistance_level,note,set_note,tempo,bands,set_color
+2026-11-05,2026-11-05 14:22,2026-11-05 15:59,Upper1,Both sets 12 w 50 lat pulldowns,Barbell Close-Grip Bench Press,0030,upper arms,,1,failure,,45,kg,10,,,,,,,,,,,
+2026-11-11,2026-11-11 16:19,2026-11-11 18:13,UpperBody2,,Dumbbell Incline Bench Press,0314,chest,,1,warmup,,30,kg,15,,,,,,,,,,,
+2026-11-12,2026-11-12 15:19,2026-11-12 17:05,Upper1,Cable high row is lbs nu kg,Cable High Row (Kneeling),0167,back,,1,normal,,80,kg,15,,,,,,,,,,,
+2026-11-13,2026-11-13 16:16,2026-11-13 17:17,Vineri,,Lever Seated Crunch,1452,waist,,3,normal,,35,kg,0,,,,,,,,,,,
+```
+
+In order: a set taken to failure (completed), a warm-up, a row whose unit is contradicted by its note, and a failed set
+(`reps=0`).
+
+## F. Quirks and open questions
+
+1. **`unit` can be wrong.** The note "Cable high row is lbs nu kg" ("nu" = "not") contradicts `unit=kg`. The columns
+   alone cannot reveal it. `Cable High Row (Kneeling)` is logged only as 70, 80 and 90 "kg", so its rows in other
+   workouts may be in pounds too. Never convert automatically; surface a logging-quality flag.
+2. **`set_type=failure` is not a failed set** (45 kg x 10 completed).
+3. **Workout notes repeat on every row** (20 rows each).
+4. **Weight 0** is used for `Pull-Up` and `Decline Sit-Up` (12 sets): no added load, not a 0 kg lift.
+5. **Reps above 10 are frequent** (74 of 211 sets), so e1RM exclusions will be common.
+6. **At most 3 sets per exercise and workout**, so there are few points per session.
+7. `[TO VERIFY]` with a small test export: pounds, RPE/RIR, supersets, drop sets, `side`, notes with commas or quotes,
+   timed or distance exercises, and the exact export menu and app version.
 
 ## Differences observed in a second export
 
-Compared files (both CSV exports from the OpenGym app, made on 2026-11-24):
+Compared files (CSV exports from the OpenGym app; A made on 2026-11-24, B refreshed to the committed export of
+2026-11-25, which adds one workout):
 
-| | Export A (`fineas_anonymized.csv`, F1) | Export B (David's export, D2) |
+| | Export A (`fineas_anonymized.csv`, F1) | Export B (`david_anonymized.csv`, D2) |
 |---|---|---|
-| Data rows (one row = one set) | 276 | 185 |
-| Workouts (distinct `start_time`) | 19, 2026-10-26 to 2026-11-24 | 10, 2026-11-05 to 2026-11-24 |
-| Distinct exercises | 21 | 26 (6 shared with A) |
-| Sets per workout | 12-17 | 10-24 |
+| Data rows (one row = one set) | 276 | 211 |
+| Workouts (distinct `start_time`) | 19, 2026-10-26 to 2026-11-24 | 11, 2026-11-05 to 2026-11-25 |
+| Distinct exercises | 21 | 27 (7 shared with A) |
+| Sets per workout | 12-17 | 10-26 |
 | Columns | **21** | **26** |
 
 Both files are UTF-8 **with BOM**, comma-separated, **CRLF** line endings, a header row, a trailing newline, rows sorted
@@ -33,7 +143,7 @@ Then:
 
 Consequence for the adapter (D5): **map columns by header name, never by position**. Treat
 `resistance_level, set_note, tempo, bands, set_color` as optional. Why the sets differ is unknown: app version,
-platform or an export setting. `[TO VERIFY]` David should check his app version and export options. Fineas's export
+platform or an export setting. `[TO VERIFY]` David's app runs on iOS; version not recorded. Fineas's export
 was made from the app's default CSV export.
 
 Columns that are **empty in every row of both files**: `superset_id, side, rpe, rir, distance_km, seconds, incline`,
@@ -53,8 +163,8 @@ from these files `[TO VERIFY]`. Do not guess it in the adapter.
 
 | `set_type` value | Export A | Export B |
 |---|---|---|
-| `normal` | 266 | 183 |
-| `warmup` | 10 (always `set` = 1) | 1 (`set` = 1) |
+| `normal` | 266 | 208 |
+| `warmup` | 10 (always `set` = 1) | 2 (`set` = 1) |
 | `failure` | 0 | 1 |
 
 - **`set_type=failure` does NOT mean a failed set.** The only `failure` row in B is `Barbell Close-Grip Bench Press,
@@ -67,7 +177,7 @@ from these files `[TO VERIFY]`. Do not guess it in the adapter.
 
 ### 4. RPE / RIR
 
-Neither user logs RPE or RIR: the `rpe` and `rir` columns are empty on all 461 rows. Consequences:
+Neither user logs RPE or RIR: the `rpe` and `rir` columns are empty on all 487 rows. Consequences:
 - Every real-data analysis hits the "no RPE" paths: effective sets are counted and flagged `no_rpe`, and RPE drift
   is not assessed. The RPE-based hypotheses (`fatigue_accumulation` via drift) **cannot be exercised on real data**.
   They need the simulator (Fi2).
@@ -86,10 +196,10 @@ Neither user logs RPE or RIR: the `rpe` and `rir` columns are empty on all 461 r
 ### 6. Weights, reps and bodyweight exercises
 
 - `weight=0` is used for bodyweight exercises: `Weighted Pull-Up` in A (4 sets) and `Pull-Up` and `Decline Sit-Up` in
-  B (9 sets). It means "no added load", not a 0 kg set. e1RM and tonnage over these sets are meaningless without
+  B (12 sets). It means "no added load", not a 0 kg set. e1RM and tonnage over these sets are meaningless without
   bodyweight. D3 should state that weight-0 sets are excluded from e1RM and contribute 0 to tonnage, or else add
   bodyweight `[decision for D3]`.
-- **reps > 10 is very common**: 111 of 276 sets (40%) in A and 60 of 185 (32%) in B. The e1RM rule
+- **reps > 10 is very common**: 111 of 276 sets (40%) in A and 74 of 211 (35%) in B. The e1RM rule
   "reps > 10 excluded from e1RM" will drop a large share of real sets, especially accessories. This is not a bug,
   but D3/D8 should expect many exclusion flags on real data.
 - Weights use `.` decimals in 2.5 kg steps. No impossible values were seen.
