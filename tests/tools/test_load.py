@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from src.tools._common_provisional import ToolError, ValueIdFactory
+from src.ingest import ingest_workout_log, open_store
+from src.tools.common import ToolError, ValueIdFactory
 from src.tools.load import LoadResult, compute_uncoupled_load, uncoupled_load_analyzer
 
 AS_OF = date(2026, 3, 31)
@@ -28,6 +30,7 @@ class S:
     rpe: float | None = None
     set_type: str = "normal"
     failed: bool = False
+    exercise_id: str | None = None
 
 
 def at(days_before: int) -> datetime:
@@ -165,3 +168,32 @@ def test_deterministic_and_store_entry_point() -> None:
     a = uncoupled_load_analyzer(FakeStore(), "log-1", as_of=AS_OF)
     b = uncoupled_load_analyzer(FakeStore(), "log-1", as_of=AS_OF)
     assert a.model_dump() == b.model_dump()
+
+
+def test_excluded_exercises_do_not_count() -> None:
+    sets = fixture_sets()
+    for s in sets:
+        s.exercise_id = "Squat"
+    sets[1].exercise_id = "Excluded"
+    res = compute_uncoupled_load(sets, as_of=AS_OF, allowed_exercise_ids={"Squat"})
+    assert isinstance(res, LoadResult)
+    assert vals(res)["acute_load"] == 500  # without the 80 x 10 of the excluded exercise
+    assert res.summary["excluded"]["not_allowed"] == 1
+    every = compute_uncoupled_load(sets, as_of=AS_OF)
+    assert isinstance(every, LoadResult)
+    assert every.values[0].provenance.config_hash != res.values[0].provenance.config_hash
+
+
+def test_missing_reps_are_not_counted_as_failed() -> None:
+    res = compute_uncoupled_load([*fixture_sets(), S("t0", at(0), 50, None)], as_of=AS_OF)
+    assert isinstance(res, LoadResult)
+    assert res.summary["excluded"] == {"failed": 1, "missing_reps": 1, "no_weight": 1, "warmup": 1}
+
+
+def test_real_exports_are_too_short() -> None:
+    root = Path(__file__).resolve().parents[2] / "data" / "fixtures" / "opengym"
+    with open_store() as db:
+        for who in ("david", "fineas"):
+            ingest_workout_log(root / f"{who}_anonymized.csv", log_id=who, store=db)
+            res = uncoupled_load_analyzer(db, who)
+            assert isinstance(res, ToolError) and res.code == "insufficient_history"

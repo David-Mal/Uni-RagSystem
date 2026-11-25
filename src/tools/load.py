@@ -6,44 +6,43 @@ load change only. It is not a predictor of anything else, and this tool never pr
 
 Pure and deterministic: no clock, no randomness, no network. ``as_of`` defaults to the date of the last valid set.
 
-Window semantics (``days_before = (as_of - set_date).days``; provisional until ``docs/indicator-spec.md``, D3):
+Implements section 5 of ``docs/indicator-spec.md`` (``days_before = (as_of - set_date).days``):
 - acute:   0 <= days_before < 7        (as_of and the 6 days before it)
 - chronic: 7 <= days_before < 7 + 28   (days 7 .. 34); a set at day 35 or later is ignored
 - chronic_weekly = chronic_total / (28 / 7)
 - history required: first valid set at days_before >= 34 (the log covers the whole chronic window)
 
-Set validity: warm-ups excluded; failed sets (``failed`` or reps == 0) excluded; sets without weight or with weight 0
-(bodyweight) contribute nothing and are counted in ``excluded``.
+Set validity: warm-ups excluded; failed sets (``failed`` or reps == 0) excluded; sets without reps, without weight or
+with weight 0 (bodyweight) contribute nothing. Every excluded set is counted under its first reason in ``excluded``.
 Metrics: ``tonnage`` = sum(weight_kg * reps). ``rpe_weighted`` = sum(weight_kg * reps * rpe / 10), over sets with RPE
-only; sets without RPE are excluded and counted (weighting provisional, D3).
+only; sets without RPE are excluded and counted.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Literal, Protocol
 
-from src.tools._common_provisional import (  # replace with src.tools.common when D3 (#5) merges
+from src.tools.common import (
     Provenance,
     ToolError,
     ToolResult,
     Value,
     ValueIdFactory,
     config_hash,
+    load_indicator_config,
 )
 
-TOOL_VERSION = "uncoupled_load_analyzer-0.1.0"
+TOOL_VERSION = "uncoupled_load_analyzer-1.0.0"
 Metric = Literal["tonnage", "rpe_weighted"]
 
-DEFAULT_CONFIG: dict[str, Any] = {
-    "acute_days": 7,
-    "chronic_days": 28,
-    "rpe_weight_divisor": 10.0,
-    "summary_decimals": 2,
-}
-"""Provisional thresholds; move to ``configs/indicators.yaml`` keys once D3 defines them."""
+
+def default_config() -> dict[str, Any]:
+    """The ``load`` section of ``configs/indicators.yaml`` plus the summary rounding."""
+    cfg = load_indicator_config()
+    return {**cfg["load"], "summary_decimals": cfg["rounding"]["summary_decimals"]}
 
 
 class SetRow(Protocol):
@@ -51,6 +50,7 @@ class SetRow(Protocol):
 
     set_id: str
     workout_ts: datetime
+    exercise_id: str | None
     weight_kg: float | None
     reps: int | None
     rpe: float | None
@@ -77,8 +77,10 @@ class _Window:
 def _exclusion_reason(s: SetRow, metric: Metric) -> str | None:
     if s.set_type == "warmup":
         return "warmup"
-    if s.failed or not s.reps:
+    if s.failed or s.reps == 0:
         return "failed"
+    if s.reps is None:
+        return "missing_reps"
     if not s.weight_kg:
         return "no_weight"
     if metric == "rpe_weighted" and s.rpe is None:
@@ -97,9 +99,13 @@ def compute_uncoupled_load(
     as_of: date | None = None,
     config: Mapping[str, Any] | None = None,
     ids: ValueIdFactory | None = None,
+    allowed_exercise_ids: Collection[str] | None = None,
 ) -> LoadResult | ToolError:
-    """Compute acute load, chronic weekly load and their heuristic ratio from canonical sets."""
-    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    """Compute acute load, chronic weekly load and their heuristic ratio from canonical sets.
+
+    If ``allowed_exercise_ids`` is given (gate output), sets of other or unmatched exercises are excluded.
+    """
+    cfg = {**default_config(), **(config or {})}
     if metric not in ("tonnage", "rpe_weighted"):
         return ToolError(code="invalid_metric", message=f"metric must be 'tonnage' or 'rpe_weighted', got {metric!r}")
     ids = ids or ValueIdFactory()
@@ -110,6 +116,8 @@ def compute_uncoupled_load(
     valid: list[SetRow] = []
     for s in sets:
         reason = _exclusion_reason(s, metric)
+        if reason is None and allowed_exercise_ids is not None and s.exercise_id not in allowed_exercise_ids:
+            reason = "not_allowed"
         if reason:
             excluded[reason] = excluded.get(reason, 0) + 1
         else:
@@ -143,16 +151,17 @@ def compute_uncoupled_load(
             window = chronic
         else:
             continue
-        window.total += _set_load(s, metric, float(cfg["rpe_weight_divisor"]))
+        window.total += _set_load(s, metric, float(cfg["rpe_divisor"]))
         window.set_ids.append(s.set_id)
     if future:
         excluded["after_as_of"] = future
 
     weeks = chronic_days / 7
     chronic_weekly = chronic.total / weeks
-    chash = config_hash({**cfg, "metric": metric, "as_of": as_of.isoformat()})
+    allowed = None if allowed_exercise_ids is None else sorted(allowed_exercise_ids)
+    chash = config_hash({**cfg, "metric": metric, "as_of": as_of.isoformat(), "allowed_exercise_ids": allowed})
     unit = "kg" if metric == "tonnage" else "kg_rpe_weighted"
-    per_set = "weight_kg*reps" if metric == "tonnage" else f"weight_kg*reps*rpe/{cfg['rpe_weight_divisor']:g}"
+    per_set = "weight_kg*reps" if metric == "tonnage" else f"weight_kg*reps*rpe/{cfg['rpe_divisor']:g}"
 
     def prov(formula: str, row_ids: list[str]) -> Provenance:
         return Provenance(formula=formula, input_row_ids=row_ids, tool_version=TOOL_VERSION, config_hash=chash)
@@ -228,6 +237,7 @@ def uncoupled_load_analyzer(
     as_of: date | None = None,
     config: Mapping[str, Any] | None = None,
     ids: ValueIdFactory | None = None,
+    allowed_exercise_ids: Collection[str] | None = None,
 ) -> LoadResult | ToolError:
     """Tool entry point: read the log's stored sets and compute the uncoupled acute/chronic load.
 
@@ -235,4 +245,11 @@ def uncoupled_load_analyzer(
     ``ToolError``: ``insufficient_history``, ``no_valid_sets`` or ``invalid_metric``. When the chronic load is zero,
     the ratio is undefined: it is omitted and flagged ``chronic_zero_ratio_undefined``.
     """
-    return compute_uncoupled_load(store.get_sets(log_id), metric=metric, as_of=as_of, config=config, ids=ids)
+    return compute_uncoupled_load(
+        store.get_sets(log_id),
+        metric=metric,
+        as_of=as_of,
+        config=config,
+        ids=ids,
+        allowed_exercise_ids=allowed_exercise_ids,
+    )

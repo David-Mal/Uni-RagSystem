@@ -1,1 +1,1 @@
-"""The MCP tools as plain Python functions (no MCP import here)."""
+"""Deterministic analysis and retrieval tools for the Heuristic Load & Fatigue Analyzer."""
