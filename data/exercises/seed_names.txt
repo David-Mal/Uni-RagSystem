@@ -1,0 +1,41 @@
+Barbell Bench Press	Barbell_Bench_Press_-_Medium_Grip
+Barbell Close-Grip Bench Press	Close-Grip_Barbell_Bench_Press
+Barbell Incline Bench Press	Barbell_Incline_Bench_Press_-_Medium_Grip
+Barbell Lying Triceps Extension Skull Crusher	Lying_Triceps_Press
+Barbell Reverse Curl	Reverse_Barbell_Curl
+Barbell Wrist Curl	
+Cable Cross-Over Revers Fly	Cable_Rear_Delt_Fly
+Cable High Row (Kneeling)	Kneeling_High_Pulley_Row
+Cable Incline Rear Delt Fly With Back Support	
+Cable Incline Skull Crusher	Cable_Incline_Triceps_Extension
+Cable Kneeling Crunch	Cable_Crunch
+Cable Leaning Lateral Raise	
+Cable Low Fly	Low_Cable_Crossover
+Cable Pulldown	
+Cable Rear Delt Row (With Rope)	Cable_Rope_Rear-Delt_Rows
+Cable Standing Lat Pushdown (Rope Equipment)	Rope_Straight-Arm_Pulldown
+Cable Straight Arm Pulldown	Straight-Arm_Pulldown
+Cable Straight Arm Pulldown V. 2	Straight-Arm_Pulldown
+Cable Triceps Pushdown (V-Bar)	Triceps_Pushdown_-_V-Bar_Attachment
+Decline Sit-Up	
+Dumbbell Biceps Curl (With Arm Blaster)	Dumbbell_Bicep_Curl
+Dumbbell Hammer Curl V. 2	Hammer_Curls
+Dumbbell Hammer Curls (With Arm Blaster)	Hammer_Curls
+Dumbbell Incline Bench Press	Incline_Dumbbell_Press
+Dumbbell Incline Biceps Curl	Incline_Dumbbell_Curl
+Dumbbell Lateral Raise	Side_Lateral_Raise
+Dumbbell Rear Fly	
+Dumbbell Shrug	Dumbbell_Shrug
+Dumbbell Standing Biceps Curl	Dumbbell_Bicep_Curl
+Dumbbell Standing Overhead Press	Standing_Dumbbell_Press
+Dumbbell Zottman Curl	Zottman_Curl
+Lever Leg Extension	Leg_Extensions
+Lever Lying Leg Curl	Lying_Leg_Curls
+Lever Seated Crunch	Ab_Crunch_Machine
+Lever Seated Fly	Butterfly
+Lever Seated Hammer Grip Shoulder Press	Leverage_Shoulder_Press
+Lever Seated Row	Leverage_Iso_Row
+Pull-Up	Pullups
+Smith Calf Raise V. 2	Smith_Machine_Calf_Raise
+Smith Shoulder Press	Smith_Machine_Overhead_Shoulder_Press
+Weighted Pull-Up	Weighted_Pull_Ups
