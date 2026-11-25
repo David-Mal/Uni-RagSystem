@@ -11,6 +11,8 @@ import unittest
 
 from scripts.kappa import (
     AnnotationError,
+    CATEGORICAL_VALUES,
+    EXERCISE_ID_PATTERN,
     FieldSpec,
     cohens_kappa,
     compare_annotations,
@@ -289,6 +291,7 @@ class AnnotationInputTests(unittest.TestCase):
             '{"id":"fixture-a","id":"fixture-b","triage_level":"green"}\n',
             '{"id":"fixture-a","triage_level":"green","unused":NaN}\n',
             '{"id":"fixture-a","triage_level":"green","unused":Infinity}\n',
+            '{"id":"fixture-a","triage_level":"green","unused":1e999}\n',
             '{"id":"fixture-a","triage_level":"green"}\n\n',
         ]
         for content in cases:
@@ -322,6 +325,39 @@ class AnnotationInputTests(unittest.TestCase):
                 with self.assertRaisesRegex(AnnotationError, "outside the F2"):
                     read_annotations(path, "/id", [FieldSpec(name, "/" + name)])
 
+    def test_exercise_id_pattern_and_lowercase_unknown(self) -> None:
+        field = [FieldSpec("exercise_id", "/exercise_id")]
+        for value in ("unknown", "Barbell_Bench_Press_-_Medium_Grip"):
+            with self.subTest(valid=value):
+                path = self.write_rows("a.jsonl", [{"id": "fixture-a", "exercise_id": value}])
+                self.assertEqual(read_annotations(path, "/id", field)[("string", "fixture-a")]["exercise_id"], value)
+        for value in (
+            "UNKNOWN", "Unknown", "unKnown", "bench press", "bench/press", "bench.press", "bénch", "unknown\n",
+        ):
+            with self.subTest(invalid=value):
+                path = self.write_rows("a.jsonl", [{"id": "fixture-a", "exercise_id": value}])
+                with self.assertRaisesRegex(AnnotationError, "F2's ID pattern"):
+                    read_annotations(path, "/id", field)
+
+    def test_exercise_id_rejection_is_a_private_cli_error(self) -> None:
+        path = self.write_rows("a.jsonl", [{
+            "id": "fixture-a", "triage_level": "green", "exercise_id": "not/an/id",
+        }])
+        result = self.cli(path, path, "--field", "exercise_id=/exercise_id")
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("not/an/id", result.stderr)
+        self.assertNotIn("fixture-a", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_incompatible_categorical_pointer_mapping_is_rejected(self) -> None:
+        path = self.write_rows("a.jsonl", [{
+            "id": "fixture-a", "triage_level": "green", "outcome": "completed",
+        }])
+        for field in (FieldSpec("outcome", "/triage_level"), FieldSpec("triage_level", "/outcome")):
+            with self.subTest(field=field.name):
+                with self.assertRaisesRegex(AnnotationError, "outside the F2"):
+                    read_annotations(path, "/id", [field])
+
     def test_nested_metadata_and_labels_need_no_new_export_format(self) -> None:
         path = self.write_rows("a.jsonl", [{
             "metadata": {"item/id~key": "fixture-a"},
@@ -340,6 +376,19 @@ class AnnotationInputTests(unittest.TestCase):
             with self.subTest(pointer=pointer):
                 with self.assertRaises(AnnotationError):
                     pointer_parts(pointer)
+        for pointer in ("/items/01", "/items/-1", "/items/1", "/items/" + "9" * 5000):
+            with self.subTest(pointer_length=len(pointer)):
+                with self.assertRaises(AnnotationError):
+                    lookup_pointer({"items": ["green"]}, pointer)
+
+    def test_invalid_comparison_selection_is_not_a_pass(self) -> None:
+        labels = {("string", "fixture-a"): {"triage_level": "green"}}
+        for fields in ([], TRIAGE * 2, [FieldSpec("rpe", "/rpe")], [FieldSpec("outcome", "/outcome")]):
+            with self.subTest(fields=fields):
+                with self.assertRaises(AnnotationError):
+                    compare_annotations(labels, labels, fields)
+        with self.assertRaises(AnnotationError):
+            compare_annotations({}, {}, TRIAGE)
 
     def test_utf8_bom_from_windows_editor(self) -> None:
         path = self.write_raw('\ufeff{"id":"fixture-a","triage_level":"green"}\n')
@@ -370,6 +419,39 @@ class AnnotationInputTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("--id-pointer", result.stderr)
         self.assertIn("--field", result.stderr)
+
+
+class F2ContractCompatibilityTests(unittest.TestCase):
+    """Compare Fi1 mappings to the inspected schema using Git only, never F2 data/code execution."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        # Pin the reviewed contract; never fetch, checkout, merge or import F2.
+        revision = "7f5e5b27fcff17164af5f52d08248bbe4d2d82a8"
+        try:
+            result = subprocess.run(
+                ["git", "show", f"{revision}:schemas/extraction_result.json"],
+                cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=False,
+            )
+        except FileNotFoundError as exc:
+            raise unittest.SkipTest("Git is unavailable for the optional F2 contract check.") from exc
+        if result.returncode:
+            raise unittest.SkipTest("Pinned F2 contract is not present locally; no network access is attempted.")
+        cls.schema = json.loads(result.stdout)
+
+    def test_categorical_mappings_match_the_exported_f2_schema(self) -> None:
+        properties = self.schema["properties"]
+        expected_names = {name for name, spec in properties.items() if "$ref" in spec} | {"exercise_id"}
+        self.assertEqual(set(CATEGORICAL_VALUES), expected_names)
+        for name in expected_names - {"exercise_id"}:
+            with self.subTest(field=name):
+                definition = properties[name]["$ref"].removeprefix("#/$defs/")
+                self.assertEqual(CATEGORICAL_VALUES[name], frozenset(self.schema["$defs"][definition]["enum"]))
+
+    def test_exercise_id_shape_matches_f2(self) -> None:
+        self.assertEqual(EXERCISE_ID_PATTERN, self.schema["properties"]["exercise_id"]["pattern"])
+        # Membership is deliberately not asserted: no pinned D7 vocabulary was supplied.
+        self.assertIsNone(CATEGORICAL_VALUES["exercise_id"])
 
 
 if __name__ == "__main__":

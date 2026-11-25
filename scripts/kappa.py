@@ -2,8 +2,9 @@
 
 Only explicitly supplied JSONL files and JSON Pointers are read. This is a
 comparison utility, not the F2 extraction schema or the evaluation harness.
-Categorical values below come from David-Mal/Uni-RagSystem issue #8 (F2);
-reconcile them with the shared schema when it lands. No extra dependencies.
+Categorical values and exercise-ID shape were checked against F2 PR #69,
+commit 7f5e5b27fcff17164af5f52d08248bbe4d2d82a8 (schema v0), using read-only
+Git inspection. F2 is not merged here. No extra dependencies.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import argparse
 from collections import Counter
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -20,9 +22,9 @@ from typing import Literal, NotRequired, Sequence, TypedDict
 
 AGREEMENT_THRESHOLD = 0.70  # Architecture plan section 3.2 / Fi1.
 
-# F2 issue #8 specifies these values. No new extraction enum is introduced.
-# [TO VERIFY] Import shared enums once F2 exists in this checkout.
-# exercise_id membership needs the pinned D7 vocabulary; only shape is checked.
+# These match the inspected F2 v0 contract, not a new extraction enum.
+# Reuse the shared enums once F2 is integrated; do not import an unmerged branch.
+# Canonical membership still needs the pinned D7 vocabulary and F2 validation.
 CATEGORICAL_VALUES: dict[str, frozenset[str] | None] = {
     "exercise_id": None,
     "kinematic_observation": frozenset(
@@ -38,6 +40,7 @@ CATEGORICAL_VALUES: dict[str, frozenset[str] | None] = {
     "outcome": frozenset({"completed", "failed", "partial"}),
     "triage_level": frozenset({"green", "yellow", "red"}),
 }
+EXERCISE_ID_PATTERN = r"^[A-Za-z0-9_\-]+$"  # F2 models.EXERCISE_ID_PATTERN.
 
 ItemKey = tuple[str, str | int]
 Annotations = dict[ItemKey, dict[str, str]]
@@ -97,12 +100,14 @@ def lookup_pointer(record: object, pointer: str) -> object:
     for part in pointer_parts(pointer):
         if isinstance(current, dict) and part in current:
             current = current[part]
-        elif (
-            isinstance(current, list)
-            and re.fullmatch(r"0|[1-9][0-9]*", part)
-            and int(part) < len(current)
-        ):
-            current = current[int(part)]
+        elif isinstance(current, list) and re.fullmatch(r"0|[1-9][0-9]*", part):
+            try:
+                index = int(part)
+            except ValueError as exc:
+                raise AnnotationError("A configured array index cannot be represented.") from exc
+            if index >= len(current):
+                raise AnnotationError("A configured identifier or label is missing.")
+            current = current[index]
         else:
             raise AnnotationError("A configured identifier or label is missing.")
     return current
@@ -135,6 +140,13 @@ def _reject_constant(value: str) -> object:
     raise AnnotationError("Non-finite constants are invalid JSON.")
 
 
+def _finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise AnnotationError("JSON numbers must be representable as finite values.")
+    return parsed
+
+
 def read_annotations(
     path: Path, id_pointer: str, fields: Sequence[FieldSpec]
 ) -> Annotations:
@@ -157,6 +169,7 @@ def read_annotations(
                     line,
                     object_pairs_hook=_unique_object,
                     parse_constant=_reject_constant,
+                    parse_float=_finite_float,
                 )
             except ValueError as exc:
                 # Do not echo input text, labels or identifiers into diagnostics.
@@ -186,6 +199,13 @@ def read_annotations(
                     if allowed is not None and value not in allowed:
                         raise AnnotationError(
                             f"{field.name} is outside the F2 specified enum."
+                        )
+                    if field.name == "exercise_id" and (
+                        not re.fullmatch(EXERCISE_ID_PATTERN, value)
+                        or (value.lower() == "unknown" and value != "unknown")
+                    ):
+                        raise AnnotationError(
+                            "exercise_id must match F2's ID pattern or lowercase 'unknown'."
                         )
                     labels[field.name] = value
                 annotations[item_key] = labels
@@ -227,6 +247,15 @@ def compare_annotations(
     left: Annotations, right: Annotations, fields: Sequence[FieldSpec]
 ) -> AgreementReport:
     """Compare matching items and flag every red-versus-not-red disagreement."""
+    if not left or not right:
+        raise AnnotationError("Comparison requires non-empty annotations from both annotators.")
+    if not fields or len({field.name for field in fields}) != len(fields):
+        raise AnnotationError("Select at least one field, with no duplicate names.")
+    for field in fields:
+        if field.name not in CATEGORICAL_VALUES:
+            raise AnnotationError("Unsupported categorical field.")
+        if any(field.name not in labels for labels in (*left.values(), *right.values())):
+            raise AnnotationError("A selected categorical label is missing.")
     only_left = left.keys() - right.keys()
     only_right = right.keys() - left.keys()
     if only_left or only_right:
@@ -280,7 +309,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Exit 0: threshold met, no red disagreement; 1: review needed "
             "(below 0.70, undefined, or red disagreement); 2: invalid input. "
-            "F2/D7 vocabulary and the final headline-field list remain [TO VERIFY]."
+            "F2 v0 categorical values and exercise-ID shape are checked; canonical "
+            "ID membership, numeric agreement and the headline-field list need coordination."
         ),
     )
     parser.add_argument("annotator_a", type=Path)
@@ -335,7 +365,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
         print("Human review required." if report["review_required"] else "Threshold met.")
         print(
-            "Scope: selected categorical fields; exercise-ID membership, numeric "
+            "Scope: selected F2 v0 categorical fields and exercise-ID shape; canonical ID membership, numeric "
             "agreement and final headline selection remain [TO VERIFY]."
         )
     return 1 if report["review_required"] else 0

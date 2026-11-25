@@ -3,13 +3,14 @@
   "references": [
     "docs/milestone2-architecture-and-plan.md sections 3.1-3.3",
     "RFC_Heuristic_Load_Fatigue_Analyzer.md section 3 goal 5",
-    "https://github.com/David-Mal/Uni-RagSystem/issues/7"
+    "https://github.com/David-Mal/Uni-RagSystem/issues/7",
+    "F2 PR #69 schema v0, commit 7f5e5b27fcff17164af5f52d08248bbe4d2d82a8; inspected read-only, not merged"
   ],
   "format_note": "JSON syntax is a YAML 1.2 subset; standard-library tests need no YAML dependency.",
   "scope": "Counts only. No golden or pilot messages. Pilot items are separate unless humans decide otherwise.",
   "counting_rule": "Sparse joint strata; unlisted combinations target zero. Assign one primary trap per message; secondary traps do not add counts.",
   "taxonomy_review": {
-    "safety_class": "Project-defined green/yellow/red.",
+    "safety_class": "Project-defined green/yellow/red; confirmed against F2 v0 TriageLevel at the referenced commit. These are extraction values; the planning dimensions below are not new F2 enums.",
     "trap_type": "Fi1-required categories; no extraction enum is introduced. Figurative or negated red cells must still have an affirmative project-defined red symptom; trap wording alone never determines the class.",
     "exercise_family": "Proposed planning groups [TO VERIFY], not canonical exercise IDs or an F2 enum.",
     "phrasing_style": "Proposed planning groups [TO VERIFY]; align with the held-out phrasing-family manifest.",

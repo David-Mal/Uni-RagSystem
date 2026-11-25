@@ -108,6 +108,43 @@ class SamplingMatrixTests(unittest.TestCase):
         for name in ("exercise_family", "phrasing_style", "hard_negative"):
             self.assertIn("[TO VERIFY]", self.matrix["taxonomy_review"][name])
 
+    def test_existing_axis_allocations_are_consistent(self) -> None:
+        # Each family has 22 green + 12 yellow + 16 red = 50 items, split 25/author.
+        family_totals = Counter()
+        style_totals = Counter()
+        trap_totals = Counter()
+        for cell in self.cells:
+            family_totals[cell["exercise_family"]] += cell["count"]
+            style_totals[cell["phrasing_style"]] += cell["count"]
+            trap_totals[cell["trap_type"]] += cell["count"]
+        self.assertEqual(family_totals, dict.fromkeys(self.matrix["exercise_families"], 50))
+        self.assertEqual(style_totals, {"narrative": 98, "terse log": 76, "mixed narrative and log": 76})
+        self.assertEqual(trap_totals, {
+            "figurative": 50, "negated": 50, "slang/typo": 26,
+            "boundary": 50, "multi-exercise": 24, "none": 50,
+        })
+        for author in ("Filip", "Patrick"):
+            totals = Counter()
+            for cell in self.cells:
+                totals[cell["exercise_family"]] += cell["by_author"][author]
+            self.assertEqual(totals, dict.fromkeys(self.matrix["exercise_families"], 25))
+
+    def test_existing_hard_negative_counts_are_included_once(self) -> None:
+        # These verify existing allocations, not new annotation thresholds or quotas.
+        # Green: 12+12+10+12+10+12+10=78; yellow: 7*6=42. Total: 120 within 250.
+        totals = Counter()
+        for cell in self.cells:
+            if cell["hard_negative"]:
+                totals[cell["safety_class"]] += cell["count"]
+        self.assertEqual(totals, {"green": 78, "yellow": 42})
+        self.assertEqual(sum(totals.values()), 120)
+        for author in ("Filip", "Patrick"):
+            author_totals = Counter()
+            for cell in self.cells:
+                if cell["hard_negative"]:
+                    author_totals[cell["safety_class"]] += cell["by_author"][author]
+            self.assertEqual(author_totals, {"green": 39, "yellow": 21})
+
 
 if __name__ == "__main__":
     unittest.main()
