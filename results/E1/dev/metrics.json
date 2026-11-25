@@ -1,0 +1,336 @@
+{
+  "exercises": [
+    {
+      "corpus": "exercises",
+      "chunking": "unsplit",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 0.9,
+      "recall_at_5": 0.9,
+      "mrr": 0.6667
+    },
+    {
+      "corpus": "exercises",
+      "chunking": "unsplit",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 0.5,
+      "recall_at_5": 0.8,
+      "mrr": 0.4533
+    },
+    {
+      "corpus": "exercises",
+      "chunking": "unsplit",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 0.3,
+      "recall_at_5": 0.6,
+      "mrr": 0.32
+    },
+    {
+      "corpus": "exercises",
+      "chunking": "unsplit",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 0.4,
+      "recall_at_5": 0.4,
+      "mrr": 0.2833
+    },
+    {
+      "corpus": "exercises",
+      "chunking": "unsplit",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 0.3,
+      "recall_at_5": 0.3,
+      "mrr": 0.25
+    },
+    {
+      "corpus": "exercises",
+      "chunking": "unsplit",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 0.2,
+      "recall_at_5": 0.3,
+      "mrr": 0.175
+    }
+  ],
+  "synthesis": [
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_512",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_512",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "heading",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "heading",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_512",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_512",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "heading",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "heading",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_512",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_512",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "heading",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "heading",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_256",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.95
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_256",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.95
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_256",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.95
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_256",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.95
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_256",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.9
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "fixed_256",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.85
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "sentence_window",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.8333
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "sentence_window",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.8333
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "sentence_window",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "hybrid",
+      "n_queries": 10,
+      "recall_at_3": 0.9,
+      "recall_at_5": 1.0,
+      "mrr": 0.8083
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "sentence_window",
+      "embedder": "intfloat/e5-small-v2",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 1.0,
+      "recall_at_5": 1.0,
+      "mrr": 0.7667
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "sentence_window",
+      "embedder": "BAAI/bge-small-en-v1.5",
+      "params_m": 33.4,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 0.9,
+      "recall_at_5": 1.0,
+      "mrr": 0.7533
+    },
+    {
+      "corpus": "synthesis",
+      "chunking": "sentence_window",
+      "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+      "params_m": 22.7,
+      "mode": "dense",
+      "n_queries": 10,
+      "recall_at_3": 0.8,
+      "recall_at_5": 0.9,
+      "mrr": 0.7083
+    }
+  ]
+}
