@@ -6,7 +6,7 @@ families. Seeds come from the train/dev pools at an offset, so they never coinci
 
 Usage::
 
-    python -m src.datagen.triage --manifest data/manifests/partition.yaml --n-train 1500 --n-dev 300
+    python -m src.datagen.triage --n-train 1500 --n-dev 300
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any
 
 from src.datagen.build_training import DEFAULT_RATIOS, build_split, class_targets, read_drop_ids
 from src.datagen.messages import write_jsonl
-from src.datagen.registry import PoolRegistry
+from src.datagen.partition import DEFAULT_PATH, Partition, load_partition
 from src.schemas import TriageLevel
 
 LABEL2ID: dict[str, int] = {"green": 0, "yellow": 1, "red": 2}
@@ -57,7 +57,7 @@ def to_triage_item(item: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def build_triage(
-    registry: PoolRegistry,
+    registry: Partition,
     n_train: int,
     n_dev: int,
     ratios: Mapping[TriageLevel, float] = DEFAULT_RATIOS,
@@ -89,14 +89,14 @@ def build_triage(
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="Build triage-classifier train/dev data.")
-    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_PATH)
     parser.add_argument("--n-train", type=int, default=1500)
     parser.add_argument("--n-dev", type=int, default=300)
     parser.add_argument("--drop-ids", type=Path, default=Path("data/manifests/drop_ids.txt"))
     parser.add_argument("--out-dir", type=Path, default=Path("data/training"))
     args = parser.parse_args(argv)
 
-    registry = PoolRegistry.load(args.manifest)
+    registry = load_partition(args.manifest)
     train, dev, seeds = build_triage(registry, args.n_train, args.n_dev, drop_ids=read_drop_ids(args.drop_ids))
     for name, items in (("triage_train", train), ("triage_dev", dev)):
         path = args.out_dir / f"{name}.jsonl"

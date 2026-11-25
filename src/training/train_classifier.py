@@ -47,7 +47,7 @@ def load_jsonl(path: Path, limit: int | None = None, seed: int = 0) -> list[dict
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()  # same on every OS
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - needs the ml group and a model download

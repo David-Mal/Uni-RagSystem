@@ -64,6 +64,8 @@ The ablation "same model, different prompt" is reported in E4 but not shipped.
   The checklist and symptom-detail styles state severity explicitly (`none` / `mild` / `serious`), always consistent
   with the label (tested). **Soreness** (ordinary next-day muscle soreness is green, while soreness that persists for
   days is yellow) and **resolved past pain** (green) follow the plan and the Fi1 draft `[TO VERIFY with Fi1]`.
+  Every style, also the hard-negative ones, contains all three classes: a harmless clause can be followed by a real
+  red symptom, so neither the clause nor the style means "not red" (tested).
   Clause phrases come from the same per-pool vocabularies as the extractor (`vocab.CLAUSES`), so train and dev share
   no phrase.
 - **Seeds**: triage train starts at `train_start + 5000` and triage dev at `dev_start + 500`. Extractor data (F4)
