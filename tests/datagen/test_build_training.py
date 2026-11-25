@@ -1,4 +1,4 @@
-"""Tests for the training-data builder (issue F4). Small sizes, stub manifest only."""
+"""Tests for the training-data builder (issue F4). Small sizes, real manifest."""
 
 from __future__ import annotations
 
@@ -14,15 +14,15 @@ from src.datagen.build_training import (
     normalize_text,
     read_drop_ids,
 )
-from src.datagen.registry import PoolRegistry
+from src.datagen.partition import Partition, load_partition
 from src.schemas import ExtractionResult, TriageLevel
 
-STUB = Path(__file__).resolve().parents[1] / "data" / "datagen" / "partition_stub.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(scope="module")
-def registry() -> PoolRegistry:
-    return PoolRegistry.load(STUB)
+def registry() -> Partition:
+    return load_partition()
 
 
 def test_class_targets_sum_and_ratio() -> None:
@@ -43,7 +43,7 @@ def test_normalize_text_merges_trivial_variants_but_keeps_decimals() -> None:
     assert normalize_text("12.5 kg") != normalize_text("125 kg")
 
 
-def test_build_counts_pools_and_no_cross_split_duplicates(registry: PoolRegistry) -> None:
+def test_build_counts_pools_and_no_cross_split_duplicates(registry: Partition) -> None:
     train, dev, red_dev = build_all(registry, n_train=120, n_dev=40, n_red_dev=15)
     assert len(train.items) == 120 and len(dev.items) == 40 and len(red_dev.items) == 15
     assert {it["pool"] for it in train.items} == {"train"}
@@ -59,13 +59,13 @@ def test_build_counts_pools_and_no_cross_split_duplicates(registry: PoolRegistry
             ExtractionResult.model_validate(it["labels"])
 
 
-def test_build_is_deterministic(registry: PoolRegistry) -> None:
+def test_build_is_deterministic(registry: Partition) -> None:
     a = build_all(registry, n_train=60, n_dev=20, n_red_dev=5)
     b = build_all(registry, n_train=60, n_dev=20, n_red_dev=5)
     assert [s.items for s in a] == [s.items for s in b]
 
 
-def test_audit_drop_ids_are_removed_and_replaced(registry: PoolRegistry) -> None:
+def test_audit_drop_ids_are_removed_and_replaced(registry: Partition) -> None:
     baseline = build_all(registry, n_train=30, n_dev=9, n_red_dev=3)[0]
     victim = baseline.items[0]["item_id"]
     train = build_all(registry, n_train=30, n_dev=9, n_red_dev=3, drop_ids={victim})[0]
@@ -83,10 +83,27 @@ def test_read_drop_ids(tmp_path: Path) -> None:
 
 def test_cli_writes_files_and_report(tmp_path: Path) -> None:
     out, report = tmp_path / "training", tmp_path / "report.md"
-    args = ["--manifest", str(STUB), "--n-train", "30", "--n-dev", "9", "--n-red-dev", "3"]
+    args = ["--n-train", "30", "--n-dev", "9", "--n-red-dev", "3"]
     assert main([*args, "--out-dir", str(out), "--report", str(report), "--drop-ids", str(tmp_path / "none")]) == 0
     train = list(iter_jsonl(out / "train.jsonl"))
     assert len(train) == 30 and all(it["data_version"] == "train_v1" for it in train)
     text = report.read_text(encoding="utf-8")
     for heading in ("## train", "## dev", "## red_dev", "triage class", "phrasing family", "exercise family"):
         assert heading in text
+    assert "Leakage audit (P4): not run yet" in text
+    assert "data/manifests/partition.yaml" in text and str(REPO_ROOT) not in text and REPO_ROOT.as_posix() not in text
+
+
+def test_report_names_the_audit_when_there_is_a_drop_list(tmp_path: Path) -> None:
+    drop, report = tmp_path / "drop.txt", tmp_path / "report.md"
+    drop.write_text("tm-train-000001\n", encoding="utf-8")
+    args = ["--n-train", "9", "--n-dev", "9", "--n-red-dev", "3", "--out-dir", str(tmp_path / "t")]
+    assert main([*args, "--report", str(report), "--drop-ids", str(drop)]) == 0
+    assert "Leakage audit (P4): 1 ids in the drop list" in report.read_text(encoding="utf-8")
+
+
+def test_committed_files_are_what_the_builder_makes() -> None:
+    splits = build_all(load_partition(), 3000, 300, 100, drop_ids=read_drop_ids(REPO_ROOT / "data/manifests/drop_ids.txt"))
+    for s in splits:
+        committed = list(iter_jsonl(REPO_ROOT / "data" / "training" / f"{s.name}.jsonl"))
+        assert [{k: v for k, v in it.items() if k != "data_version"} for it in committed] == s.items

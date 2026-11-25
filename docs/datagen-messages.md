@@ -1,6 +1,6 @@
 # Training message generator (template-v0)
 
-Issue F3 (#26). Code: `src/datagen/messages.py`, `families.py`, `vocab.py`, `registry.py`.
+Issue F3 (#26). Code: `src/datagen/messages.py`, `families.py`, `vocab.py`; pools come from `partition.py` (P1).
 It generates synthetic messages labeled with the full `ExtractionResult` (schema v0) for the extractor and the triage
 signal. **Training and dev pools only.** It never reads, writes or imitates golden data.
 
@@ -24,16 +24,14 @@ labels             ExtractionResult as JSON (exercise_id, kinematic_observation,
 pool               train | dev
 persona_id         from the manifest, same pool
 phrasing_family    from the manifest, same pool
-hard_negative      null | figurative | negated
+hard_negative      null | figurative | negated | mixed (the kind of the family)
 seed               the item's seed (inside the pool's seed range); output is byte-identical for the same seeds
 generator          template-v0   (generator_model: template, generator_version: v0)
 paraphraser        null, or the paraphrasing model id + version
 schema_version     v0
 ```
 
-## Proposed phrasing families (for the P1 manifest)
-
-These ids must be in the manifest's **train** and **dev** pools respectively. They must never be in golden.
+## Phrasing families (manifest entries with `consumer: extractor`)
 
 | Id | Pool | Style |
 |---|---|---|
@@ -54,8 +52,7 @@ These ids must be in the manifest's **train** and **dev** pools respectively. Th
 | `pf_dev_diary` | dev | diary entry with a weekday |
 | `pf_dev_hn_mixed` | dev | hard negatives (figurative or negated), texting style (own renderer) |
 
-If P1 uses other ids, map them here, or rename the keys in `families.py`. The generator reads the pool from the
-manifest, never from this table.
+The generator reads the pool and the consumer from the manifest, never from this table.
 
 ## Labeling conventions used by the generator
 
@@ -65,13 +62,14 @@ These are made by construction and must agree with the labeling guideline (Fi1, 
   explicit negation ("pain free today"). `yellow`: mild discomfort, ache, stiffness, tightness, a twinge, or soreness that
   persists for days. `red`: sharp or stabbing pain, swelling, a pop or snap with pain, numbness or tingling,
   dizziness or fainting, chest pain or tightness. A **yellow hard negative** is a negated red cue plus a real mild
-  symptom ("no sharp pain, just a bit of stiffness in my knee") or figurative language plus a real mild symptom.
+  symptom ("no dizziness, but my knee stayed stiff the whole session") or figurative language plus a real mild symptom.
   **Red with a distractor**: 15% of red items put a negated mild symptom or figurative effort before the real red
-  symptom ("legs are dead after that, but stabbing pain in my shoulder"), so negation never means "not red".
+  symptom ("legs are dead after that, but stabbing pain in my shoulder"). They are rendered in the hard-negative styles,
+  so every style contains every class and neither a clause nor a style means "not red".
 - **Outcome** (never null; definition agreed in the #69 review). `completed`: no failure or partial completion is
   reported. `partial`: fewer reps than planned, and `reps` = reps completed ("managed 2 out of 3" gives `reps=2`).
-  `failed`: the attempted rep was not completed. The text gives no count, so `reps` is `null` (a missing number is not
-  zero), `rpe` is `null` or `10`, and the kinematic observation is never `grinding_rep`.
+  `failed`: no rep was completed. The text gives no count, so `reps` is `null` (a missing number is not zero), `rpe`
+  is `null` or `10`, the kinematic observation is never `grinding_rep`, and no phrase mentions final or last reps.
 - **No contradictions.** Positive remarks ("moved well", "felt strong") appear only on completed sets with no
   kinematic observation. A rep number in a figurative clause ("dying by rep five") always equals the labeled `reps`.
 - **Load.** Labeled only when the text states it, always with a unit. The value and unit are as written: 225 lbs stays
@@ -95,23 +93,20 @@ No phrase reuses wording from the plan's examples (§3.3) or the labeling guidel
 
 unknown exercise 10% · load present 85% (lb 25%) · reps present 85% · RPE present 45% ·
 outcome completed/partial/failed 80/10/10% · kinematic `none` 55% · red systemic (dizziness/chest) 30% of red ·
-hard negatives 25% of green, 15% of yellow, never red · red distractor 15% of red.
+hard-negative styles 25% of green, 15% of yellow, 15% of red.
 Loads come from per-exercise working ranges scaled by a persona multiplier in [0.6, 1.3]. The multiplier is derived
 deterministically from the persona id, because personas carry no numeric fields.
 
-Sample run (stub manifest, 3000 train / 300 dev, 35/30/35): 0 plan or guideline phrases; 161 of 1050 red items with a
-distractor; 205 figurative and 201 negated hard negatives; 0 positive remarks on failed, partial or kinematic items;
-0 failed items with a rep count or a grind; 0 rep-number mismatches.
+Sample run (manifest v1, 3000 train / 300 dev, 35/30/35), hard-negative styles by class (green / yellow / red): train
+figurative 141 / 64 / 70, train negated 132 / 69 / 67, dev mixed 22 / 18 / 13. All 289 failed train items and 31 failed dev
+items mention neither a rep count nor final or last reps.
 
 ## Usage
 
 ```
-python -m src.datagen.messages --manifest data/manifests/partition.yaml --pool train --per-class 100 \
-    --out data/training/sample.jsonl
+python -m src.datagen.messages --pool train --per-class 100 --out data/training/sample.jsonl
 ```
 
-Until P1 is merged, `tests/data/datagen/partition_stub.yaml` (test only, placeholder golden ids) can be passed as
-`--manifest`.
 
 ## Known limits
 
