@@ -46,8 +46,10 @@ class BM25Index:
         if not q_tokens:
             return []
         scores = self._bm25.get_scores(q_tokens)
+        wanted = set(q_tokens)
         scored_indices = sorted(
-            range(len(self._chunks)),
+            # A document without any query term is not a hit; ranking it would add noise to RRF.
+            (i for i in range(len(self._chunks)) if wanted.intersection(self._tokenized[i])),
             key=lambda i: (-float(scores[i]), self._chunks[i].chunk_id),
         )
         results: list[ScoredChunk] = []

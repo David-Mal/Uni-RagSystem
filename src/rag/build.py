@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import chromadb
+
 from src.rag.bm25 import BM25Index
 from src.rag.corpus import (
     ChunkingMode,
@@ -21,7 +23,6 @@ from src.rag.corpus import (
 )
 from src.rag.store import (
     DEFAULT_EMBEDDER_MODEL,
-    PINNED_CHROMA_VERSION,
     ChromaVectorStore,
     Embedder,
     HashEmbedder,
@@ -39,6 +40,7 @@ class BuildReport:
     total_chunks: int
     upserted_chunks: int
     skipped_unchanged: int
+    deleted_chunks: int
     exercise_chunks: int
     synthesis_chunks: int
     manifest_path: Path
@@ -64,6 +66,7 @@ def build_index(
     chunking: ChunkingMode = "heading",
     include_exercises: bool = True,
     include_synthesis: bool = True,
+    include_drafts: bool = False,
 ) -> BuildReport:
     """Incrementally embed/upsert only changed chunks into Chroma, rebuild BM25, write manifest."""
     idx_dir = Path(index_dir)
@@ -81,7 +84,7 @@ def build_index(
         else []
     )
     syn_chunks = (
-        load_synthesis_chunks(synthesis_dir=synthesis_dir, chunking=chunking)
+        load_synthesis_chunks(synthesis_dir=synthesis_dir, chunking=chunking, include_drafts=include_drafts)
         if include_synthesis
         else []
     )
@@ -91,27 +94,26 @@ def build_index(
     if manifest_path.exists():
         prev_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    same_model = prev_manifest.get("embedding_model") == active_embedder.model_name
-    same_chunking = prev_manifest.get("chunking") == chunking
-    prev_hashes: dict[str, str] = (
-        dict(prev_manifest.get("chunk_hashes", {})) if (same_model and same_chunking) else {}
-    )
+    store = ChromaVectorStore(idx_dir / "chroma", active_embedder)
+    if prev_manifest.get("embedding_model") != active_embedder.model_name:
+        store.reset()
+    # The collection itself is the truth, so an interrupted build repairs itself.
+    prev_hashes = store.stored_hashes()
+    stale = sorted(set(prev_hashes) - {c.chunk_id for c in all_chunks})
+    store.delete(stale)
 
     changed_chunks = [c for c in all_chunks if prev_hashes.get(c.chunk_id) != c.content_hash]
     skipped = len(all_chunks) - len(changed_chunks)
 
-    store = ChromaVectorStore(idx_dir / "chroma", active_embedder)
     upserted = store.upsert(changed_chunks)
-
-    if changed_chunks or not bm25_path.exists() or len(prev_hashes) != len(all_chunks):
-        bm25 = BM25Index(all_chunks)
-        bm25.save(bm25_path)
+    BM25Index(all_chunks).save(bm25_path)
 
     manifest = {
         "source_commit": _git_head_commit(),
-        "chroma_version": PINNED_CHROMA_VERSION,
+        "chroma_version": chromadb.__version__,
         "embedding_model": active_embedder.model_name,
         "chunking": chunking,
+        "include_drafts": include_drafts,
         "exercise_chunks": len(ex_chunks),
         "synthesis_chunks": len(syn_chunks),
         "chunk_hashes": {c.chunk_id: c.content_hash for c in all_chunks},
@@ -122,6 +124,7 @@ def build_index(
         total_chunks=len(all_chunks),
         upserted_chunks=upserted,
         skipped_unchanged=skipped,
+        deleted_chunks=len(stale),
         exercise_chunks=len(ex_chunks),
         synthesis_chunks=len(syn_chunks),
         manifest_path=manifest_path,
@@ -136,6 +139,7 @@ def main() -> None:
     parser.add_argument("--exercises-path", type=Path, default=None)
     parser.add_argument("--chunking", type=str, default="heading")
     parser.add_argument("--fake-embedder", action="store_true")
+    parser.add_argument("--include-drafts", action="store_true", help="also index unapproved documents (experiments)")
     args = parser.parse_args()
 
     embedder: Embedder | None = HashEmbedder() if args.fake_embedder else None
@@ -146,11 +150,12 @@ def main() -> None:
         exercises_path=args.exercises_path,
         synthesis_dir=args.synthesis_dir,
         chunking=args.chunking,
+        include_drafts=args.include_drafts,
     )
     print(
         f"Indexed {report.total_chunks} chunks "
         f"(exercises={report.exercise_chunks}, synthesis={report.synthesis_chunks}; "
-        f"upserted={report.upserted_chunks}, skipped={report.skipped_unchanged}). "
+        f"upserted={report.upserted_chunks}, skipped={report.skipped_unchanged}, deleted={report.deleted_chunks}). "
         f"Manifest: {report.manifest_path}"
     )
 
