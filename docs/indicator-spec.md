@@ -1,8 +1,8 @@
 # Indicator specification
 
-Version 1 (issue D3). This is the contract for the tools (D8, F7, M2, M3) **and** for the independent reference
-implementation (P3). Both are written from this text. If code and text disagree, the text decides; if the text is
-ambiguous, fix the text first.
+Version 1.1 (issue D3; the open points raised on #5 are settled in the text). This is the contract for the tools
+(D8, F7, M2, M3) **and** for the independent reference implementation (P3). Both are written from this text. If code
+and text disagree, the text decides; if the text is ambiguous, fix the text first.
 
 Every threshold is a key in [`configs/indicators.yaml`](../configs/indicators.yaml), written here as `[section.key]`. The
 defaults are tuned on the dev set only and frozen before the golden logs layer is frozen. Nothing in this document is an
@@ -19,6 +19,7 @@ Canonical sets (issue D4). Fields used: `set_id`, `workout_ts`, `exercise_id`, `
 - **Units.** `weight_kg` is always kilograms (1 lb = 0.45359237 kg). Results are in kilograms.
 - **`set_type = failure`** means the set was taken to failure. It is **not** a failed set.
 - **Failed set.** `failed` is true, or `reps = 0`.
+- **RPE.** An RPE outside `[1, 10]` is treated as missing in every indicator.
 - **Date.** The calendar date of `workout_ts`, local time, no timezone conversion.
 - **Session.** One exercise on one date. Two workouts on the same date form one session.
 
@@ -32,12 +33,16 @@ A set with missing reps that is not failed is still a working set. Each indicato
 A set is counted under the **first** reason that applies, in this order: `warmup`, `failed`, then the indicator's own
 reasons in the order they are listed in its section. Excluded sets are counted, never silently dropped.
 
+Only the sets an indicator looks at are counted: those inside the analysis window (§2, §3), inside the weeks shown
+(§4), or at `0 <= days_before < 35` (§5). Sets outside these ranges are ignored, not counted.
+
 ### 1.4 `as_of` and windows
 
 - `as_of` is the date of the **last working set of the whole log** (all exercises), unless the caller passes a date.
-  No tool reads the clock. Two indicators narrow this default: load (§5) uses the last set valid for its metric, and
-  weekly sets (§4) the last set of the log.
-- `days_before = as_of - date(set)` in whole days. A set with `days_before < 0` is ignored.
+  No tool reads the clock. Two indicators change this default: load (§5) uses the last set valid for its metric, and
+  weekly sets (§4) the last set of the log, which may be a warm-up or a failed set.
+- `days_before = as_of - date(set)` in whole days. A set with `days_before < 0` is ignored, also when it falls in the
+  last week shown by §4.
 - **Analysis window** = `0 <= days_before < 7 * [window.analysis_weeks]` (6 weeks, 42 days). Days 0 and 41 are inside, day
   42 is outside.
 
@@ -52,6 +57,12 @@ construction, so the denominator is positive with two or more points.
 Values keep full floating-point precision. Only the `summary` for the model is rounded, to
 `[rounding.summary_decimals]` (2) decimals, half to even (Python `round`). Comparisons use unrounded numbers with an
 absolute slack of `1e-9` on inclusive bounds.
+
+### 1.7 Error precedence
+
+Invalid arguments (`invalid_bodyweight`, `invalid_metric`) are reported first, then `unknown_exercise`, then the data
+errors of the indicator. An exercise that has sets in the log is never `unknown_exercise`, even when all its sets are
+after `as_of`: its window is empty, so e1RM gives `insufficient_sessions` and drift gives `rpe_missing`.
 
 ## 2. Estimated 1RM (`compute_e1rm_and_drift`, part 1)
 
@@ -80,7 +91,8 @@ No special case for r = 1: Epley is applied as written.
 2. The session value of a series is the **maximum** over its sets. Each series takes its own maximum.
 3. Sessions with no valid set are absent from the series (not zero). The RPE-adjusted series may have fewer points or
    be empty.
-4. If the Epley series has fewer than `[e1rm.min_sessions]` (4) sessions, stop: `insufficient_sessions`.
+4. If the Epley series has fewer than `[e1rm.min_sessions]` (4) sessions, stop: `insufficient_sessions`. This stops
+   the e1RM part only; RPE drift (§3) is still computed and reported next to the error.
 5. `e1rm_slope` = slope (§1.5) of the **Epley** series, kg per week.
 6. `e1rm_latest` = Epley value of the last session. If a bodyweight > 0 is given,
    `relative_strength = e1rm_latest / bodyweight`.
@@ -113,9 +125,10 @@ present). There is **no** reps limit here.
 
 **Steps.**
 1. No valid set: `rpe_missing`.
-2. Reference load = the weight that occurs in the **most valid sets** (weights compared after rounding to 2 decimals). Tie:
-   the **heavier** weight.
-3. Comparable set: `abs(w - ref) <= [drift.load_tolerance] * ref` (5 %, inclusive).
+2. Reference load = the weight that occurs in the **most valid sets**. Weights are grouped after rounding to 2
+   decimals; tie: the **heavier** group. The reference is the heaviest **raw** weight of the chosen group.
+3. Comparable set: `abs(w - ref) <= [drift.load_tolerance] * ref` (5 %, inclusive), with the raw weight `w`. Example:
+   with a reference of 100 lb (45.359237 kg), sets at 95 lb and 105 lb are both comparable.
 4. Per session with at least one comparable set: mean RPE over its comparable sets.
 5. Fewer than `[drift.min_sessions]` (4) such sessions: `insufficient_comparable_sessions`.
 6. `rpe_drift_slope` = slope (§1.5) of the session means, RPE units per week.
@@ -144,11 +157,13 @@ and reps are not required, so bodyweight sets count.
 3. Each effective set adds `[weekly_sets.primary_muscle_weight]` (1.0) to every primary muscle and
    `[weekly_sets.secondary_muscle_weight]` (0.5) to every secondary muscle. A muscle listed as both counts as primary only.
 4. One value per muscle and week with at least one contributing set. A missing cell means 0.
-5. Per muscle: total over the weeks shown, and mean = total / weeks shown. The mean is **defined** rounded to 2
-   decimals, so it can be quoted exactly.
-6. Trend label: last minus first among the weeks with sets; `up` if > `[weekly_sets.trend_flat_band]` (0.5), `down` if
-   < -0.5, otherwise `flat`. The last week is left out if it is incomplete (the last date is not a Sunday) and two other
-   weeks with sets remain, so an unfinished week does not look like a drop.
+5. Per muscle: total over the weeks shown, and mean = total / weeks shown. The divisor is always
+   `[weekly_sets.default_weeks]` (6), also for a shorter log: two weeks with 3 sets each give 6 / 6 = 1.0. The mean is
+   **defined** rounded to 2 decimals, so it can be quoted exactly.
+6. Trend label, per muscle: last minus first among the weeks in which **this muscle** has a value; `up` if
+   > `[weekly_sets.trend_flat_band]` (0.5), `down` if < -0.5, otherwise `flat`. The last week is left out if it is
+   incomplete (the last date is not a Sunday) and two other weeks with a value for this muscle remain, so an unfinished
+   week does not look like a drop. Example: chest 4, 4, then a week with legs only: 4 - 4 = 0, `flat`.
 
 **Edge cases.** No sets: empty table, no error. Unknown exercises are listed by raw name.
 
@@ -177,7 +192,7 @@ Without an allowed set all exercises count, including `unknown` ones.
 - `insufficient_history`: the first valid set is at `days_before < 34`. Day 34 is enough (35 days covered).
 - Chronic = 0: no ratio value, flag `chronic_zero_ratio_undefined`. Acute and chronic are still returned.
 
-**Worked example** (tonnage). Day 0: 100 x 5 = 500. Day 6: 100 x 8 = 800. Day 7: 100 x 3 = 300. Day 8: 100 x 5 = 500. Day 34:
+**Worked example** (tonnage; "day" is `days_before`). Day 0: 100 x 5 = 500. Day 6: 100 x 8 = 800. Day 7: 100 x 3 = 300. Day 8: 100 x 5 = 500. Day 34:
 100 x 3 = 300. Day 35: 100 x 10 (ignored). Acute = **1300**. Chronic total = 1100, weekly = **275**. Ratio = 1300 / 275 =
 **4.7273** (heuristic).
 
@@ -190,18 +205,22 @@ inside it. `as_of` = date of the last such set. The window is the analysis windo
 |---|---|---|---|
 | 1 | Matched exercises | distinct matched exercises **>=** `[sufficiency.min_matched_exercises]` (1) | all |
 | 2 | Gap | the largest difference in days between consecutive training dates **inside the window** is **<=** `[sufficiency.max_gap_days]` (14). 14 passes, 15 fails | all |
-| 3 | History | days covered `(last date - first date) + 1` **>=** `7 * [sufficiency.min_history_weeks]` (35). First and last date 34 days apart passes, 33 fails | `load_ratio` |
+| 3 | History | days covered `(last date - first date) + 1`, over all considered rows (not only the window), **>=** `7 * [sufficiency.min_history_weeks]` (35). First and last date 34 days apart passes, 33 fails | `load_ratio` |
 | 4 | Sessions | at least one exercise has **>=** `[sufficiency.min_sessions_per_exercise]` (4) sessions in the window | `e1rm_trend`, `rpe_drift` |
 | 5a | RPE coverage | sets with RPE / all considered sets in the window **>=** `[sufficiency.min_rpe_coverage]` (0.5) | `rpe_drift` |
 | 5b | Comparable load | at least one exercise has **>=** `[drift.min_sessions]` (4) sessions with RPE at comparable load (§3, steps 2-4) | `rpe_drift` |
 
 Analysis names: `e1rm_trend`, `rpe_drift`, `weekly_volume`, `load_ratio`. `rpe_drift` also needs check 4.
 
+- Check 5b is evaluated only when check 5a passes, so a log without RPE gives one RPE reason, not two.
+- When no row is considered there is no `as_of`: only check 1 is evaluated, with the reason
+  `0 matched exercises; at least 1 needed; no analysis`.
 - `allowed_analyses` = the four names minus the blocked ones. `sufficient` = at least one is allowed. Partial abstention =
   sufficient, with at least one failed check.
 - Each failed check gives one reason with its numbers, for example
   `RPE logged on 2 of 18 working sets; RPE drift not assessed`.
-- Check 3 is the same bound as `insufficient_history` in §5 on purpose.
+- Check 3 is the same bound as `insufficient_history` in §5 on purpose. The rows differ: check 3 counts every considered
+  working set (bodyweight sets too), §5 only its valid sets, so the two can disagree on the same log.
 
 **Worked example.** Sessions of one exercise on days 0, 10, 20, 34 before `as_of`, no RPE. Gaps 10, 10, 14: pass. Covered days
 35: pass. Sessions 4: pass. Coverage 0 of n: fail. Allowed: `e1rm_trend`, `weekly_volume`, `load_ratio`. One reason.
