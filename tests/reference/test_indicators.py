@@ -427,6 +427,14 @@ def test_pending_5_item_9_error_precedence():
     assert code(ref.rpe_drift, EXAMPLE_3, SQUAT, as_of=day(-1)) == "rpe_missing"
 
 
+def test_pending_5_item_11_no_considered_rows_only_check_1():
+    """PENDING #5 item 11: an empty log, or one with unknown exercises only, gives the check 1 reason alone."""
+    for sets in ([], before(0, 10, ex="unknown") + before(20, ex=None)):
+        got = ref.check_data_sufficiency(sets)
+        assert got["failed_checks"] == ["1"] and got["as_of"] is None and not got["sufficient"]
+        assert got["reasons"] == ["0 matched exercises; at least 1 needed; no analysis"]
+
+
 def test_pending_5_item_10_history_over_whole_log():
     """PENDING #5 item 10: sessions 0, 10, 20, 30, 50 days before: covered 51 passes (31 inside the window)."""
     got = ref.check_data_sufficiency(before(0, 10, 20, 30, 50))

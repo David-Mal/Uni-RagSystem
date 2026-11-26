@@ -390,6 +390,7 @@ def check_data_sufficiency(sets, as_of=None, allowed=None, config=None):
     if len(exercises) < rules["min_matched_exercises"]:
         failed.append(("1", f"{len(exercises)} matched exercises; at least {rules['min_matched_exercises']} needed; "
                             "no analysis", ANALYSES))
+    # PENDING #5 item 11: with no considered row there is no as_of, so only check 1 is evaluated.
     if rows:
         window = [r for r in rows if in_analysis_window(end, r, config)]
         dates = sorted({set_date(r) for r in window})
