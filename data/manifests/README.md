@@ -68,3 +68,30 @@ Human-written golden items use `seed: null`, `generator_model: human` and `gener
 After merge, an id never changes pool, is never removed and is never reused. Adding an entry needs a new
 `manifest_version` and a reviewed PR. The `partition-v1` tag marks the first merged version. This rule is documented
 only and is not enforced in code.
+
+## Leakage audit (P4)
+
+Run by Patrick, locally, with the golden files at hand. The script needs the real embedding model
+(`uv sync --group embed`, pulls in torch). Golden text never leaves the machine and never goes to an LLM session.
+
+```
+python scripts/leakage_audit.py \
+  --train data/training/train.jsonl --train data/training/dev.jsonl --train data/training/red_dev.jsonl \
+  --train data/training/triage_train.jsonl --train data/training/triage_dev.jsonl \
+  --golden data/golden --manifest data/manifests/partition.yaml \
+  --out-drop-ids data/manifests/drop_ids.txt --out-report docs/results/leakage_audit.md --round 1
+```
+
+`--golden` is repeatable and takes a JSONL file (`item_id`, `text`) or a directory (its `messages_*.jsonl`). The pool and
+consumer expected for each training file come from its name (`train`, `dev`, `red_dev`, `triage_train`, `triage_dev`).
+
+Each item is dropped for: exact duplicate, word 3-gram Jaccard >= 0.5, cosine >= 0.9 (all-MiniLM-L6-v2, pinned
+revision) against golden, the same three against the guideline and plan examples (`reference_*`), or a manifest
+violation (`compliance_*`). Outputs: `drop_ids.txt` (`<id>  # <reasons>`) and a counts-only report. Both are safe to
+commit and to show to builders.
+
+Fixed point: audit, then rebuild with `build_training.py` (F4) and `triage.py` (F8), which skip every id in
+`drop_ids.txt` and take the next seed. Audit again with `--round N+1`. Repeat until a run with `--expect-clean` exits 0
+(exit 1: this round drops new items, exit 2: input error). The drop list is cumulative: earlier ids stay in it,
+because the builders regenerate the same ids from the same seeds. Commit the drop list, the report and the data of the
+last, clean round.
