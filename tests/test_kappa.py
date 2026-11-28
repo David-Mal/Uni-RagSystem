@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import json
+from inspect import cleandoc
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+
+from jsonschema import Draft202012Validator
+from pydantic import ValidationError
+
+from src.exercises.loader import exercise_ids
+from src.schemas.enums import EvidenceLevel, HypothesisLabel, KinematicObservation, Outcome, TriageLevel
+from src.schemas.json_schema import extraction_json_schema, model_json_schema
+from src.schemas.models import ExtractionResult, Load
 
 from scripts.kappa import (
     AgreementReport,
@@ -82,8 +91,8 @@ class KappaArithmeticTests(unittest.TestCase):
 
 class AnnotationFiles(unittest.TestCase):
     def setUp(self) -> None:
-        # Keep temporary writes inside this repository, never in data/golden.
-        workspace = tempfile.TemporaryDirectory(prefix="fi1-test-", dir=ROOT)
+        # Synthetic label projections use the OS temp directory, never golden or repository files.
+        workspace = tempfile.TemporaryDirectory(prefix="fi1-test-")
         self.addCleanup(workspace.cleanup)
         self.folder = Path(workspace.name)
 
@@ -693,22 +702,31 @@ class NumericAgreementTests(AnnotationFiles):
 
 
 class F2ContractCompatibilityTests(unittest.TestCase):
-    """Compare Fi1 mappings to the inspected schema using Git only, never F2 data/code execution."""
+    """Use merged schema/model contracts and public D7 metadata, without message content."""
 
     @classmethod
     def setUpClass(cls) -> None:
-        # Pin the reviewed contract; never fetch, checkout, merge or import F2.
-        revision = "7f5e5b27fcff17164af5f52d08248bbe4d2d82a8"
-        try:
-            result = subprocess.run(
-                ["git", "show", f"{revision}:schemas/extraction_result.json"],
-                cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=False,
-            )
-        except FileNotFoundError as exc:
-            raise unittest.SkipTest("Git is unavailable for the optional F2 contract check.") from exc
-        if result.returncode:
-            raise unittest.SkipTest("Pinned F2 contract is not present locally; no network access is attempted.")
-        cls.schema = json.loads(result.stdout)
+        # Historical inspection at 7f5e5b27 is documented in the guideline only.
+        # Missing current contracts must fail; normal tests never depend on an old Git object.
+        cls.schema = json.loads((ROOT / "schemas/extraction_result.json").read_text(encoding="utf-8"))
+        cls.load_schema = json.loads((ROOT / "schemas/load.json").read_text(encoding="utf-8"))
+        cls.known_ids = frozenset(exercise_ids())
+        cls.validator = Draft202012Validator(cls.schema)
+        Draft202012Validator.check_schema(cls.schema)
+        Draft202012Validator.check_schema(cls.load_schema)
+
+    def projection(self, **changes: object) -> dict[str, object]:
+        # Synthetic structural projection only: no source message or golden identifier.
+        value = {
+            "exercise_id": "unknown", "kinematic_observation": "none", "load": None,
+            "reps": None, "outcome": "completed", "rpe": None, "triage_level": "green",
+        }
+        value.update(changes)
+        return value
+
+    def test_current_exported_schemas_match_the_merged_models(self) -> None:
+        self.assertEqual(self.schema, model_json_schema(ExtractionResult))
+        self.assertEqual(self.load_schema, model_json_schema(Load))
 
     def test_categorical_mappings_match_the_exported_f2_schema(self) -> None:
         properties = self.schema["properties"]
@@ -724,8 +742,123 @@ class F2ContractCompatibilityTests(unittest.TestCase):
 
     def test_exercise_id_shape_matches_f2(self) -> None:
         self.assertEqual(EXERCISE_ID_PATTERN, self.schema["properties"]["exercise_id"]["pattern"])
-        # Membership is deliberately not asserted: no pinned D7 vocabulary was supplied.
         self.assertIsNone(CATEGORICAL_VALUES["exercise_id"])
+
+    def test_shared_enum_values_and_numeric_bounds(self) -> None:
+        for name, enum in (("outcome", Outcome), ("kinematic_observation", KinematicObservation),
+                           ("triage_level", TriageLevel)):
+            self.assertEqual(CATEGORICAL_VALUES[name], {item.value for item in enum})
+            for item in enum:
+                value = self.projection(**{name: item.value})
+                self.validator.validate(value)
+                self.assertEqual(getattr(ExtractionResult.model_validate(value), name), item)
+        for value in (
+            self.projection(load={"value": 0, "unit": "kg"}, reps=0, rpe=0),
+            self.projection(load={"value": 80.0, "unit": "lb"}, reps=10000, rpe=10),
+            self.projection(load={"value": 1e100, "unit": "kg"}, rpe=7.5),
+        ):
+            # No invented physiological cap: load/reps have no specified upper bound.
+            self.validator.validate(value)
+            ExtractionResult.model_validate(value)
+        self.assertEqual(set(HypothesisLabel), {
+            "insufficient_weekly_volume", "fatigue_accumulation", "stagnant_load_progression", "load_spike",
+            "inconsistent_frequency", "logging_quality_issue", "confounder_present",
+        })
+        self.assertEqual(set(EvidenceLevel), {"supported", "weak", "insufficient"})
+
+    def test_all_keys_required_and_exactly_three_nullable(self) -> None:
+        nullable = {"load", "reps", "rpe"}
+        self.assertEqual(set(self.schema["properties"]), set(TEST_FIELDS))
+        for name in TEST_FIELDS:
+            with self.subTest(field=name):
+                value = self.projection()
+                del value[name]
+                self.assertTrue(list(self.validator.iter_errors(value)))
+                with self.assertRaises(ValidationError):
+                    ExtractionResult.model_validate(value)
+                value = self.projection(**{name: None})
+                if name in nullable:
+                    self.validator.validate(value)
+                    self.assertIsNone(getattr(ExtractionResult.model_validate(value), name))
+                else:
+                    self.assertTrue(list(self.validator.iter_errors(value)))
+                    with self.assertRaises(ValidationError):
+                        ExtractionResult.model_validate(value)
+
+    def test_runtime_strictness_and_invalid_ranges(self) -> None:
+        invalid = {
+            "load": [True, {"value": True, "unit": "kg"}, {"value": "80", "unit": "kg"},
+                     {"value": -1, "unit": "kg"}, {"value": 80, "unit": "lbs"},
+                     {"value": float("nan"), "unit": "kg"}, {"value": float("inf"), "unit": "kg"},
+                     {"value": 10**400, "unit": "kg"}, {"value": 80, "unit": "kg", "extra": 1}],
+            "reps": [True, "5", 5.0, -1],
+            "rpe": [True, "8", -0.1, 10.1, float("nan"), float("inf")],
+            "outcome": ["unknown", "failure"],
+        }
+        for name, values in invalid.items():
+            for value in values:
+                with self.subTest(field=name, invalid=value):
+                    with self.assertRaises(ValidationError):
+                        ExtractionResult.model_validate(self.projection(**{name: value}))
+        with self.assertRaises(ValidationError):
+            ExtractionResult.model_validate({**self.projection(), "item_id": "synthetic-outside-envelope"})
+
+    def test_outcome_definitions_are_disjoint_and_do_not_supply_reps(self) -> None:
+        # Semantic definitions are reviewed policy, not cross-field inference from a model.
+        definition = cleandoc(Outcome.__doc__)
+        self.assertIn("set fell short of the plan", definition)
+        self.assertIn("at least one rep was completed", definition)
+        self.assertIn("no rep was completed", definition)
+        self.assertIn("do not overlap", definition)
+        self.assertEqual(self.schema["$defs"]["Outcome"]["description"], definition.strip())
+        for outcome in Outcome:
+            parsed = ExtractionResult.model_validate(self.projection(outcome=outcome.value))
+            self.assertIsNone(parsed.reps)  # Outcome never invents an unstated count.
+
+    def test_d7_vocabulary_is_compatible_with_f2_context_and_decoding_schema(self) -> None:
+        self.assertTrue(self.known_ids)
+        valid = ("Barbell_Bench_Press_-_Medium_Grip", "Barbell_Full_Squat")
+        for item in (*valid, "unknown"):
+            with self.subTest(exercise_id=item):
+                if item != "unknown":
+                    self.assertIn(item, self.known_ids)
+                self.assertEqual(ExtractionResult.model_validate(
+                    self.projection(exercise_id=item), context={"exercise_ids": self.known_ids},
+                ).exercise_id, item)
+        for item in ("UNKNOWN", "Unknown", "bench press", "bench_press", "not_in_pinned_vocabulary", "bench/press"):
+            with self.subTest(invalid=item), self.assertRaises(ValidationError):
+                ExtractionResult.model_validate(self.projection(exercise_id=item),
+                                                context={"exercise_ids": self.known_ids})
+        # Without context the exported schema/model check shape, not membership.
+        self.validator.validate(self.projection(exercise_id="not_in_pinned_vocabulary"))
+        self.assertEqual(ExtractionResult.model_validate(
+            self.projection(exercise_id="not_in_pinned_vocabulary"),
+        ).exercise_id, "not_in_pinned_vocabulary")
+        constrained = extraction_json_schema(self.known_ids)
+        self.assertEqual(set(constrained["properties"]["exercise_id"]["enum"]), self.known_ids | {"unknown"})
+
+
+class D7KappaCompatibilityTests(AnnotationFiles):
+    def test_canonical_exercise_categories_remain_exact_and_align_by_item_id(self) -> None:
+        names = ("Barbell_Bench_Press_-_Medium_Grip", "Barbell_Full_Squat", "unknown")
+        rows = [{"item_id": number, "exercise_id": value} for number, value in enumerate(names)]
+        field = [FieldSpec("exercise_id", "/labels/exercise_id")]
+        a = read_annotations(self.write_rows("a.jsonl", rows), "/item_id", field)
+        b = read_annotations(self.write_rows("b.jsonl", list(reversed(rows))), "/item_id", field)
+        self.assertEqual(compare_annotations(a, b, field)["fields"]["exercise_id"]["kappa"], 1)
+        self.assertEqual([a[("integer", number)]["exercise_id"] for number in range(3)], list(names))
+
+    def test_aliases_and_unlisted_ids_are_rejected_without_guessing(self) -> None:
+        for value in ("bench", "bench_press", "not_in_pinned_vocabulary"):
+            with self.subTest(exercise_id=value):
+                path = self.write_rows("invalid.jsonl", [{"item_id": "synthetic-only", "exercise_id": value}])
+                with self.assertRaisesRegex(AnnotationError, "pinned D7 vocabulary"):
+                    read_annotations(path, "/item_id", [FieldSpec("exercise_id", "/labels/exercise_id")])
+
+    def test_load_rejects_integers_not_representable_by_the_shared_float_contract(self) -> None:
+        path = self.write_rows("invalid.jsonl", [{"item_id": "synthetic-only", "load": {"value": 10**400, "unit": "kg"}}])
+        with self.assertRaisesRegex(AnnotationError, "finite F2 number"):
+            read_annotations(path, "/item_id", [FieldSpec("load", "/labels/load")])
 
 
 if __name__ == "__main__":

@@ -2,9 +2,9 @@
 
 Only explicitly supplied JSONL files and JSON Pointers are read. This is a
 comparison utility, not the F2 extraction schema or the evaluation harness.
-Categorical values and exercise-ID shape were checked against F2 PR #69,
-commit 7f5e5b27fcff17164af5f52d08248bbe4d2d82a8 (schema v0), using read-only
-Git inspection. F2 is not merged here. No extra dependencies.
+Categorical values and exercise-ID shape use merged F2 contracts. D7's pinned
+vocabulary validates selected exercise IDs without resolving aliases. Numeric
+categories retain exact JSON decimals rather than coercing them through floats.
 """
 
 from __future__ import annotations
@@ -20,33 +20,25 @@ import re
 import sys
 from typing import Literal, NotRequired, Sequence, TypedDict
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from src.exercises.loader import exercise_ids  # noqa: E402
+from src.schemas.enums import KinematicObservation, Outcome, TriageLevel  # noqa: E402
+from src.schemas.models import EXERCISE_ID_PATTERN, UNKNOWN_EXERCISE_ID, ExtractionResult  # noqa: E402
 
 AGREEMENT_THRESHOLD = 0.70  # Architecture plan section 3.2 / Fi1.
 
-# These match the inspected F2 v0 contract, not a new extraction enum.
-# Reuse the shared enums once F2 is integrated; do not import an unmerged branch.
-# Canonical membership still needs the pinned D7 vocabulary and F2 validation.
+# Reuse the actual merged vocabularies; this utility is not a second schema.
 CATEGORICAL_VALUES: dict[str, frozenset[str] | None] = {
     "exercise_id": None,
-    "kinematic_observation": frozenset(
-        {
-            "none",
-            "slow_bar_speed",
-            "grinding_rep",
-            "reduced_range_of_motion",
-            "lost_balance",
-            "other",
-        }
-    ),
-    "outcome": frozenset({"completed", "failed", "partial"}),
-    "triage_level": frozenset({"green", "yellow", "red"}),
+    "kinematic_observation": frozenset(item.value for item in KinematicObservation),
+    "outcome": frozenset(item.value for item in Outcome),
+    "triage_level": frozenset(item.value for item in TriageLevel),
 }
-EXERCISE_ID_PATTERN = r"^[A-Za-z0-9_\-]+$"  # F2 models.EXERCISE_ID_PATTERN.
 HEADLINE_FIELDS = frozenset(CATEGORICAL_VALUES)
 NUMERIC_FIELDS = frozenset({"load", "reps", "rpe"})
-EXTRACTION_FIELDS = (
-    "exercise_id", "kinematic_observation", "load", "reps", "outcome", "rpe", "triage_level",
-)
+EXTRACTION_FIELDS = tuple(ExtractionResult.model_fields)
 
 ItemKey = tuple[str, str | int]
 NumericValue = int | float | Decimal
@@ -179,6 +171,12 @@ def _nonnegative_number(value: object, field: str) -> NumericValue:
         raise AnnotationError(f"{field} must be finite.")
     if value < 0:
         raise AnnotationError(f"{field} must be nonnegative.")
+    try:
+        representable = math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        representable = False
+    if not representable:
+        raise AnnotationError(f"{field} must be representable as a finite F2 number.")
     return value
 
 
@@ -229,6 +227,7 @@ def read_annotations(
         pointer_parts(field.pointer)
 
     annotations: Annotations = {}
+    known_exercises = frozenset(exercise_ids()) if any(field.name == "exercise_id" for field in fields) else None
     # Accept an optional UTF-8 BOM from Windows editors.
     with path.open(encoding="utf-8-sig") as stream:
         for line_number, line in enumerate(stream, start=1):
@@ -261,6 +260,8 @@ def read_annotations(
                 for field in fields:
                     value = lookup_pointer(record, field.pointer)
                     labels[field.name] = _label_category(field.name, value)
+                    if field.name == "exercise_id" and value != UNKNOWN_EXERCISE_ID and value not in known_exercises:
+                        raise AnnotationError("exercise_id is not in the pinned D7 vocabulary; aliases are not resolved.")
                 annotations[item_key] = labels
             except AnnotationError as exc:
                 raise AnnotationError(f"{location}: {exc}") from exc
@@ -374,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Exit 0: selected headlines meet 0.70 with no red disagreement, or numeric-only report; "
             "1: headline review needed (below 0.70, undefined, or red disagreement); 2: invalid input. "
-            "Numeric kappa has no acceptance threshold. Canonical ID membership needs the pinned vocabulary."
+            "Numeric kappa has no acceptance threshold. Selected exercise IDs use the pinned D7 vocabulary."
         ),
     )
     parser.add_argument("annotator_a", type=Path)
@@ -445,7 +446,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if report["unselected_headline_fields"]:
             print("Unselected headline fields: " + ", ".join(report["unselected_headline_fields"]))
         print(
-            "Scope: selected F2 v0 fields; numeric exact-match convention awaits final team confirmation. "
+            "Scope: selected merged F2 v0 fields; seven-field nominal agreement confirmed by Patrick in PR #74. "
             "A report on a subset does not establish pilot acceptance across all four headline fields."
         )
     return 1 if report["review_required"] else 0
