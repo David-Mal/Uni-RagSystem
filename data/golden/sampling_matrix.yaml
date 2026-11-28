@@ -1,24 +1,26 @@
 {
-  "allocation_status": "Revised proposal after Patrick's review of 186c53d; final allocation confirmation pending [TO VERIFY].",
+  "allocation_status": "Patrick approved bc7a85b on 2026-11-25 conditional on moving 10 green multi-exercise items to none before authoring. That correction is applied here; no fresh review of this changed matrix is claimed. Human pilot remains pending.",
   "references": [
     "docs/milestone2-architecture-and-plan.md sections 3.1-3.3",
     "RFC_Heuristic_Load_Fatigue_Analyzer.md section 3 goal 5",
     "https://github.com/David-Mal/Uni-RagSystem/issues/7",
-    "F2 PR #69 schema v0, commit 7f5e5b27fcff17164af5f52d08248bbe4d2d82a8; inspected read-only, not merged",
+    "Merged F2 PR #69 schema v0: src/schemas/enums.py, models.py and current schemas/extraction_result.json, load.json; historical read-only inspection at 7f5e5b27fcff17164af5f52d08248bbe4d2d82a8",
     "https://github.com/David-Mal/Uni-RagSystem/pull/74#pullrequestreview-6060865279",
-    "P1 PR #80 public messages IDs and exercise-family names supplied for Fi1; no restricted descriptions or partition contents inspected"
+    "Merged P1 PR #80 public messages IDs and exercise-family names; src/datagen/partition.py is available; no restricted descriptions or partition details inspected",
+    "PR #74 final Patrick review of bc7a85b and David review, 2026-11-25; https://github.com/David-Mal/Uni-RagSystem/pull/74",
+    "D7 pinned vocabulary: data/exercises/SOURCE.md and src/exercises/loader.py exercise_ids()"
   ],
   "format_note": "JSON syntax is a YAML 1.2 subset; standard-library tests need no YAML dependency.",
   "scope": "Counts and public planning IDs only. No messages, labels or restricted phrasing descriptions. Pilot remains separate unless humans decide otherwise.",
   "counting_rule": "Exactly 90 base cells: 3 safety classes x 5 grouped exercise families x 6 primary traps. Each base cell has >=2 items, split equally by author. Nested allocations partition that cell; never add their counts to the parent again. One primary trap per item; secondary traps do not add counts.",
   "allocation_dimensions": "Phrasing family, P1 manifest family and identity target are nested planning allocations, not extra base-cell axes. Author-specific suballocations may have zero for the other author; equal author allocation is enforced at the base-cell level.",
   "taxonomy_review": {
-    "safety_class": "F2 v0 triage values; expanded symptom policy awaits David and Fineas's confirmation.",
+    "safety_class": "Merged F2 v0 triage values. David confirmed the guideline's red list and intense/unqualified pain policy; the deliberately broader deterministic gate does not redefine human labels. Fineas training-data alignment and non-radiating tingling human-label policy remain [TO VERIFY].",
     "trap_type": "Fi1-required primary traps. Figurative/negated red cells require a separate affirmative red symptom; trap wording alone never sets safety.",
     "exercise_family": "Five grouped axes retained to satisfy 30 base cells per class. Mappings below use P1's six public family names; these are not canonical exercise IDs.",
-    "phrasing_family": "Only pf_gd_01 through pf_gd_08, public opaque golden messages IDs from P1 PR #80. Descriptions are restricted and were not read or written.",
+    "phrasing_family": "Only pf_gd_01 through pf_gd_08, public opaque golden messages IDs from merged P1 PR #80. Restricted descriptions were not read or written.",
     "identity_target": "resolved/unresolved are count-planning targets, not extraction enums or assigned golden labels. Resolved slots require human-confirmed vocabulary IDs. Unresolved slots require unresolved identity to remain distinct from canonical accessories; never infer an accessories exercise ID from the group or pool coordinate.",
-    "hard_negative": "All figurative, negated, slang/typo and boundary base cells within green/yellow. Revised targets: green 54 (27/author), yellow 40 (20/author), red 0. Patrick's final allocation confirmation pending [TO VERIFY].",
+    "hard_negative": "All figurative, negated, slang/typo and boundary base cells within green/yellow. Targets unchanged: green 54 (27/author), yellow 40 (20/author), red 0. Patrick's conditional allocation correction is applied; no fresh review is claimed.",
     "real_note_probe": "Human-only selection and compatibility with issue #19's 15-per-Patrick requirement need coordination; no personal logs inspected."
   },
   "exercise_families": [
@@ -127,13 +129,15 @@
       {"phrasing_family":"pf_gd_04","manifest_family":"squat","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
       {"phrasing_family":"pf_gd_07","manifest_family":"squat","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
-    {"safety_class":"green","exercise_family":"squat pattern","trap_type":"multi-exercise","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
-      {"phrasing_family":"pf_gd_05","manifest_family":"squat","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_08","manifest_family":"squat","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+    {"safety_class":"green","exercise_family":"squat pattern","trap_type":"multi-exercise","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+      {"phrasing_family":"pf_gd_05","manifest_family":"squat","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
+      {"phrasing_family":"pf_gd_08","manifest_family":"squat","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
     ]},
-    {"safety_class":"green","exercise_family":"squat pattern","trap_type":"none","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+    {"safety_class":"green","exercise_family":"squat pattern","trap_type":"none","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
       {"phrasing_family":"pf_gd_06","manifest_family":"squat","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
-      {"phrasing_family":"pf_gd_01","manifest_family":"squat","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
+      {"phrasing_family":"pf_gd_01","manifest_family":"squat","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}},
+      {"phrasing_family":"pf_gd_05","manifest_family":"squat","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
+      {"phrasing_family":"pf_gd_08","manifest_family":"squat","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
     {"safety_class":"green","exercise_family":"hip hinge","trap_type":"figurative","hard_negative":true,"count":2,"by_author":{"Filip":1,"Patrick":1}, "allocations": [
       {"phrasing_family":"pf_gd_02","manifest_family":"deadlift","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
@@ -151,13 +155,15 @@
       {"phrasing_family":"pf_gd_05","manifest_family":"deadlift","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
       {"phrasing_family":"pf_gd_08","manifest_family":"deadlift","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
-    {"safety_class":"green","exercise_family":"hip hinge","trap_type":"multi-exercise","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
-      {"phrasing_family":"pf_gd_06","manifest_family":"deadlift","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_01","manifest_family":"deadlift","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+    {"safety_class":"green","exercise_family":"hip hinge","trap_type":"multi-exercise","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+      {"phrasing_family":"pf_gd_06","manifest_family":"deadlift","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
+      {"phrasing_family":"pf_gd_01","manifest_family":"deadlift","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
     ]},
-    {"safety_class":"green","exercise_family":"hip hinge","trap_type":"none","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
+    {"safety_class":"green","exercise_family":"hip hinge","trap_type":"none","hard_negative":false,"count":8,"by_author":{"Filip":4,"Patrick":4}, "allocations": [
       {"phrasing_family":"pf_gd_07","manifest_family":"deadlift","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_02","manifest_family":"deadlift","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+      {"phrasing_family":"pf_gd_02","manifest_family":"deadlift","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}},
+      {"phrasing_family":"pf_gd_06","manifest_family":"deadlift","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
+      {"phrasing_family":"pf_gd_01","manifest_family":"deadlift","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
     {"safety_class":"green","exercise_family":"upper-body press","trap_type":"figurative","hard_negative":true,"count":2,"by_author":{"Filip":1,"Patrick":1}, "allocations": [
       {"phrasing_family":"pf_gd_03","manifest_family":"bench","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
@@ -175,13 +181,15 @@
       {"phrasing_family":"pf_gd_06","manifest_family":"overhead_press","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
       {"phrasing_family":"pf_gd_01","manifest_family":"bench","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
     ]},
-    {"safety_class":"green","exercise_family":"upper-body press","trap_type":"multi-exercise","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
-      {"phrasing_family":"pf_gd_07","manifest_family":"bench","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_02","manifest_family":"overhead_press","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+    {"safety_class":"green","exercise_family":"upper-body press","trap_type":"multi-exercise","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+      {"phrasing_family":"pf_gd_07","manifest_family":"bench","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
+      {"phrasing_family":"pf_gd_02","manifest_family":"overhead_press","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
     ]},
-    {"safety_class":"green","exercise_family":"upper-body press","trap_type":"none","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
+    {"safety_class":"green","exercise_family":"upper-body press","trap_type":"none","hard_negative":false,"count":8,"by_author":{"Filip":4,"Patrick":4}, "allocations": [
       {"phrasing_family":"pf_gd_08","manifest_family":"overhead_press","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_03","manifest_family":"bench","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+      {"phrasing_family":"pf_gd_03","manifest_family":"bench","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}},
+      {"phrasing_family":"pf_gd_07","manifest_family":"bench","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
+      {"phrasing_family":"pf_gd_02","manifest_family":"overhead_press","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
     {"safety_class":"green","exercise_family":"upper-body pull","trap_type":"figurative","hard_negative":true,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
       {"phrasing_family":"pf_gd_04","manifest_family":"row","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
@@ -199,13 +207,15 @@
       {"phrasing_family":"pf_gd_07","manifest_family":"row","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
       {"phrasing_family":"pf_gd_02","manifest_family":"row","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
-    {"safety_class":"green","exercise_family":"upper-body pull","trap_type":"multi-exercise","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
-      {"phrasing_family":"pf_gd_08","manifest_family":"row","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_03","manifest_family":"row","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+    {"safety_class":"green","exercise_family":"upper-body pull","trap_type":"multi-exercise","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+      {"phrasing_family":"pf_gd_08","manifest_family":"row","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
+      {"phrasing_family":"pf_gd_03","manifest_family":"row","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
     ]},
-    {"safety_class":"green","exercise_family":"upper-body pull","trap_type":"none","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+    {"safety_class":"green","exercise_family":"upper-body pull","trap_type":"none","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
       {"phrasing_family":"pf_gd_01","manifest_family":"row","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
-      {"phrasing_family":"pf_gd_04","manifest_family":"row","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
+      {"phrasing_family":"pf_gd_04","manifest_family":"row","identity_target":"resolved","count":2,"by_author":{"Filip":0,"Patrick":2}},
+      {"phrasing_family":"pf_gd_08","manifest_family":"row","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
+      {"phrasing_family":"pf_gd_03","manifest_family":"row","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
     {"safety_class":"green","exercise_family":"other or unresolved family","trap_type":"figurative","hard_negative":true,"count":2,"by_author":{"Filip":1,"Patrick":1}, "allocations": [
       {"phrasing_family":"pf_gd_05","manifest_family":"accessories","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
@@ -223,13 +233,15 @@
       {"phrasing_family":"pf_gd_08","manifest_family":"accessories","identity_target":"unresolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
       {"phrasing_family":"pf_gd_03","manifest_family":"accessories","identity_target":"resolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
-    {"safety_class":"green","exercise_family":"other or unresolved family","trap_type":"multi-exercise","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
-      {"phrasing_family":"pf_gd_01","manifest_family":"accessories","identity_target":"resolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_04","manifest_family":"accessories","identity_target":"unresolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+    {"safety_class":"green","exercise_family":"other or unresolved family","trap_type":"multi-exercise","hard_negative":false,"count":4,"by_author":{"Filip":2,"Patrick":2}, "allocations": [
+      {"phrasing_family":"pf_gd_01","manifest_family":"accessories","identity_target":"resolved","count":2,"by_author":{"Filip":2,"Patrick":0}},
+      {"phrasing_family":"pf_gd_04","manifest_family":"accessories","identity_target":"unresolved","count":2,"by_author":{"Filip":0,"Patrick":2}}
     ]},
-    {"safety_class":"green","exercise_family":"other or unresolved family","trap_type":"none","hard_negative":false,"count":6,"by_author":{"Filip":3,"Patrick":3}, "allocations": [
+    {"safety_class":"green","exercise_family":"other or unresolved family","trap_type":"none","hard_negative":false,"count":8,"by_author":{"Filip":4,"Patrick":4}, "allocations": [
       {"phrasing_family":"pf_gd_02","manifest_family":"accessories","identity_target":"unresolved","count":3,"by_author":{"Filip":3,"Patrick":0}},
-      {"phrasing_family":"pf_gd_05","manifest_family":"accessories","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}}
+      {"phrasing_family":"pf_gd_05","manifest_family":"accessories","identity_target":"resolved","count":3,"by_author":{"Filip":0,"Patrick":3}},
+      {"phrasing_family":"pf_gd_01","manifest_family":"accessories","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},
+      {"phrasing_family":"pf_gd_04","manifest_family":"accessories","identity_target":"unresolved","count":1,"by_author":{"Filip":0,"Patrick":1}}
     ]},
     {"safety_class":"yellow","exercise_family":"squat pattern","trap_type":"figurative","hard_negative":true,"count":2,"by_author":{"Filip":1,"Patrick":1}, "allocations": [
       {"phrasing_family":"pf_gd_03","manifest_family":"squat","identity_target":"resolved","count":1,"by_author":{"Filip":1,"Patrick":0}},

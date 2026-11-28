@@ -1,10 +1,14 @@
 # Labeling guideline v0
 
-Status: revised after Patrick's requested changes on commit `186c53d` of
+Status: technical finalization after merged
 [Fi1 PR #74](https://github.com/David-Mal/Uni-RagSystem/pull/74).
-The revised allocation awaits Patrick's final confirmation. Expanded symptom
-policy awaits David and Fineas. Human pilot measurements remain pending; Fi1 is
-not complete.
+Patrick approved `bc7a85b` on **2026-11-25**, confirming the allocation conditional
+on moving ten green multi-exercise items to none before authoring. That correction
+is applied here; no fresh review of this changed matrix is claimed. David approved
+the guideline, kappa utility and tests, with the safety distinction recorded below;
+he explicitly did not inspect the matrix. Fineas's training-data alignment and the
+remaining cross-owner decisions are pending. Actual human pilot measurements are
+still pending, so Fi1 is not complete.
 
 ## Sources and authority
 
@@ -13,19 +17,28 @@ not complete.
 - [RFC](../RFC_Heuristic_Load_Fatigue_Analyzer.md): section 3, especially goals 2 and 5.
 - [Patrick's review](https://github.com/David-Mal/Uni-RagSystem/pull/74#pullrequestreview-6060865279)
   of `186c53d`, dated **2026-11-25**: eight requested changes and annotation decisions.
+- [Final PR #74 reviews](https://github.com/David-Mal/Uni-RagSystem/pull/74):
+  Patrick's approval of `bc7a85b`, conditional allocation correction and seven-field
+  agreement confirmation; David's subsequent approval and gate/human-label clarification,
+  both dated **2026-11-25**. The reviews were checked directly for this revision.
 - [F2 PR #69](https://github.com/David-Mal/Uni-RagSystem/pull/69), schema **v0**:
   `src/schemas/enums.py`, `models.py`, `json_schema.py` and exported
-  `schemas/extraction_result.json`, `load.json`, `claim.json`, inspected read-only
-  at `7f5e5b27fcff17164af5f52d08248bbe4d2d82a8` on
-  `origin/feat/F2-schemas-enums`. This is not a merged dependency in this checkout.
+  `schemas/extraction_result.json`, `load.json`, `claim.json`, now merged and available.
+  Historical read-only inspection was at `7f5e5b27fcff17164af5f52d08248bbe4d2d82a8`;
+  current conformance checks use merged files/models, without requiring that Git object.
+- D7: `src/exercises/loader.py` and `data/exercises/SOURCE.md`; the vendored
+  `data/exercises/free-exercise-db.json` is pinned to upstream
+  `f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5`. Use `exercise_ids()` for canonical membership.
+- [D3 v1](indicator-spec.md), especially section 6, and `configs/indicators.yaml`:
+  merged sufficiency rules; unmerged clarifications are not adopted.
 - [D9 / issue #14](https://github.com/David-Mal/Uni-RagSystem/issues/14):
-  proposed red/yellow pattern lists and gate behavior.
+  red/yellow pattern lists and gate behavior, with David's confirmation scoped below.
 - [P5 / issue #19](https://github.com/David-Mal/Uni-RagSystem/issues/19):
   `item_id` and `labels` envelope, human authoring and Patrick's real-note-style slice.
-- [P1 PR #80](https://github.com/David-Mal/Uni-RagSystem/pull/80):
-  only the eight public opaque golden `messages` IDs and six exercise-family
-  names supplied for this review. Restricted descriptions and partition contents
-  were not inspected.
+- [Merged P1 PR #80](https://github.com/David-Mal/Uni-RagSystem/pull/80):
+  `src/datagen/partition.py` supplies the shared loader and pool enforcement.
+  The matrix uses only the eight public opaque golden `messages` IDs and six
+  exercise-family names. Restricted descriptions and partition details were not inspected.
 
 Patrick's decisions below resolve Fi1's earlier open annotation questions. They
 are distinguished from the remaining cross-owner approvals. Review markers are
@@ -60,7 +73,7 @@ canonical exercise identities or diagnoses.
 
 | Field | F2 v0 contract | Fi1 annotation decision |
 |---|---|---|
-| `exercise_id` | Required non-null string matching `^[A-Za-z0-9_\-]+$`, or lowercase `unknown` | Use a confirmed vocabulary ID; unresolved identity stays `unknown`. F2 rejects mixed-case versions of the reserved sentinel. Pinned vocabulary/alias confirmation remains [TO VERIFY]. |
+| `exercise_id` | Required non-null string matching `^[A-Za-z0-9_\-]+$`, or lowercase `unknown` | Use an ID returned by D7's `exercise_ids()`; unresolved identity stays `unknown`. F2 rejects mixed-case sentinel spellings. A raw name, alias or matrix family is not a canonical ID. |
 | `kinematic_observation` | Required non-null: `none`, `slow_bar_speed`, `grinding_rep`, `reduced_range_of_motion`, `lost_balance`, `other` | Choose the first mentioned matching named observation; `other` only if no named observation fits, `none` if none is reported. Never diagnose form. |
 | `load` | Required key; `null` or object with exactly `value` and `unit`; finite number `value >= 0`, unit `kg` or `lb` | Preserve value/unit. A load without a unit is `null`. Do not infer a unit, convert or copy another set's load. Zero is allowed; F2 defines no upper bound. |
 | `reps` | Required key; strict integer `>= 0` or `null` | Record only an explicitly supplied count; otherwise `null`, including when partial/failed status is clear. No upper bound is defined. |
@@ -84,6 +97,14 @@ pattern. A matrix group or P1 pool coordinate is not a canonical exercise ID.
 The separate `Claim.exercise_id` may be null; that does not make the extraction
 field nullable.
 
+The pinned D7 vocabulary is available; it is no longer a missing dependency.
+Validate full extraction objects with
+`ExtractionResult.model_validate(labels, context={"exercise_ids": exercise_ids()})`.
+The agreement utility also checks selected exercise IDs against this vocabulary.
+Neither operation resolves aliases, changes casing, substitutes a matching family
+or guesses an ID. Human interpretation of an abbreviation remains a separate
+annotation task; use `unknown` when the identity cannot be established.
+
 ### Patrick's outcome, exercise, set and observation decisions
 
 These are the reviewer's Fi1 decisions, following F2 PR #69. They are annotation
@@ -92,9 +113,11 @@ conventions, not automatic defaults or cross-field validators:
 1. `completed` means no failure or partial completion was reported, including
    an unreported outcome. It is a conventional extraction label, not proof that
    the set physically succeeded.
-2. When failure/partial completion is described, use `partial` if at least one
-   repetition was completed; otherwise use `failed`. Do not invent a repetition
-   count from this classification: `reps` is null unless the text supplies it.
+2. The merged F2 `Outcome` definitions are disjoint: `partial` means the set fell
+   short of the plan but at least one repetition was completed; `failed` means
+   no repetition was completed. Do not invent a repetition count from this
+   classification: `reps` is null unless the text supplies it. F2 validates the
+   enum, not semantic consistency inferred from a message or unreported count.
 3. For multiple exercises, select the exercise linked to the most severe symptom.
    With no symptom, or a tie, choose the first exercise with set data, as in F2.
    Use `unknown` if the chosen identity cannot be resolved. Triage is always
@@ -124,17 +147,19 @@ agreed nesting; this does not redefine the issue's authoring envelope.
 ## Safety classes and scope
 
 These are conservative **project annotation rules**, not medical diagnoses,
-injury predictions or advice. Patrick proposes combining the RFC and issue #14.
-**The expanded red/yellow policy remains [TO VERIFY] with David and Fineas.**
-The review does not establish their approval or change the production gate.
+injury predictions or advice. David confirmed that the guideline's combined
+RFC/#14 red list is implemented by D9, that intense pain is red and unqualified
+pain is yellow, and that human labels should remain as written. Fineas's
+confirmation of training-data alignment remains **[TO VERIFY]**. This does not
+claim unanimous cross-owner approval or change any gate/training implementation.
 
-| Class | Annotation definition | Project gate effect |
+| Class | Human annotation definition | Routing when the final gate level is this class |
 |---|---|---|
 | `green` | No symptoms; Patrick also classifies explicitly resolved non-red symptoms as green. | Normal analysis subject to sufficiency. |
 | `yellow` | Mild discomfort, ache/achy, stiffness, non-chest tightness, persistent soreness or a twinge; also unqualified pain and explicitly resolved red symptoms under Patrick's conservative rule. | Exclude affected exercise(s), use the fixed disclaimer and continue only with sufficient eligible data. |
-| `red` | Any applicable combined red trigger below, or intense pain under Patrick's reviewer decision. | Block analysis and use only the fixed referral message. |
+| `red` | Any applicable combined red trigger below, or intense pain as confirmed by David. | Block analysis and use only the fixed referral message. |
 
-The complete **proposed combined red list** is:
+The complete **combined red list** recorded in the guideline and confirmed by David is:
 
 - Sharp pain.
 - Stabbing pain.
@@ -147,16 +172,33 @@ The complete **proposed combined red list** is:
 - Pop or snap accompanied by pain.
 
 Issue #14's yellow list is mild discomfort, ache, achy, stiffness, tightness,
-soreness that persists and a twinge. Chest tightness belongs to the proposed red
+soreness that persists and a twinge. Chest tightness belongs to the combined red
 list; generic tightness must not hide that distinction. No time cutoff, symptom
 score, numerical intensity threshold or additional medical trigger is invented.
 
 Patrick's additional decisions are: **unqualified pain is yellow; intense pain
 is red; explicitly resolved symptoms are green except that a resolved red symptom
 is yellow; unclear timing counts as present**. These reviewer decisions resolve
-the former Fi1 questions. Their reconciliation with gate and training policy,
-together with the expanded trigger lists, still requires David and Fineas's
-confirmation. No gate, classifier, extractor or training data is changed here.
+the former Fi1 questions. David explicitly retained these human-label rules even
+where the deterministic gate is broader. Fineas's training-data alignment remains
+open. No gate, classifier, extractor or training data is changed here.
+
+### Deterministic gate versus human labels
+
+David explained that the deterministic rules deliberately favor recall: any
+tingling and explicitly resolved red symptoms may still produce red. That behavior
+must not overwrite human annotations or be treated as evidence of a labeling error.
+
+| Case | Human annotation policy | Deterministic gate distinction confirmed by David |
+|---|---|---|
+| Explicitly resolved red symptom | Yellow under Patrick's recorded rule. | May remain red under the broader rules. |
+| Radiating tingling | Red under the existing combined list. | Covered by the broader any-tingling rule. |
+| Tingling without radiation | **[TO VERIFY]**: Patrick proposed red in his final review; no final golden-label change is established. | May produce red; this does not approve the proposed human-label extension. |
+
+Resolve the non-radiating-tingling conflict with the safety/training owners before
+finalizing items that depend on it. Do not silently assign Patrick's proposal as
+an approved golden rule. Instructor protocol, human adjudication and annotation
+policy confirmation are distinct from implementation approval.
 
 Evaluate negation and timing before taking the most severe applicable class
 across the message. The production gate takes the maximum of its signals per
@@ -215,8 +257,9 @@ readings require review [TO VERIFY]; they do not introduce scoring thresholds:
 | `weak` | Relevant evidence exists but is limited or confounded; the limitation must be explicit. |
 | `insufficient` | Available data cannot support that hypothesis; abstain from the affected claim or analysis. |
 
-Indicator cutoffs, the final evidence rubric and how insufficient candidates are
-serialized versus omitted need the relevant owners' specification. Do not invent
+Use the merged D3 v1 indicator definitions where settled. The final evidence rubric,
+unresolved hypothesis bands and how insufficient candidates are serialized versus
+omitted still need the relevant owners' specification. Do not invent
 volume bands, trend cutoffs, confounder causality or citations. Numbers come from
 deterministic tools or the separately specified independent reference, not an LLM.
 Warm-up and failed sets do not contribute to e1RM. Plan section 2.2 defines failed
@@ -234,16 +277,16 @@ Apply plan section 5.5's precedence: unreadable input, red block, insufficient
 data, yellow exclusions, then green analysis. Red referral must not be replaced by
 a request for more data. Yellow exclusions can cause insufficiency.
 
-Use the configurable defaults from plan section 2.5, subject to dev-only tuning
-and freezing by their owner:
+Use the merged D3 v1 section 6 checks and configurable defaults, subject to dev-only
+tuning and freezing by their owner. Their effects are analysis-specific:
 
-| Sufficiency check | Published default |
+| Sufficiency check | Merged default and effect if it fails |
 |---|---|
-| History span | At least 5 weeks with data. |
-| Exercise sessions | At least 4 sessions in the last 6 weeks after excluding warm-up and failed sets. |
-| RPE drift eligibility | RPE on at least 50% of working sets and at least 4 sessions at comparable load (within 5%). |
-| Gaps | No gap longer than 14 days in the analyzed window. |
-| Exercise matching | At least one analyzed exercise resolved with high confidence, other than `unknown`. |
+| History span | At least 35 covered days, inclusive: first/last dates 34 days apart pass. Blocks `load_ratio`. |
+| Exercise sessions | At least one exercise has 4 sessions in the analysis window (6 weeks). Blocks `e1rm_trend` and `rpe_drift`. |
+| RPE coverage/comparability | At least 50% of considered working sets have RPE and at least one exercise has 4 RPE sessions at comparable load (5% band under D3 section 3). Blocks `rpe_drift`. |
+| Gaps | Largest gap between considered training dates in the window is at most 14 days. Blocks all analyses. |
+| Exercise matching | At least one matched exercise other than `unknown`, within any allowed exercise set. Blocks all analyses. |
 
 State the actual missing evidence. Abstain partially when only some analyses are
 unavailable; abstain fully when none is supportable. Do not infer missing RPE,
@@ -254,7 +297,10 @@ annotation-agreement tolerances.
 ## Sampling matrix
 
 [sampling_matrix.yaml](../data/golden/sampling_matrix.yaml) is a count-only
-**revised proposal awaiting Patrick's final confirmation [TO VERIFY]**.
+allocation with **Patrick's conditional correction applied**. He approved
+`bc7a85b` conditional on moving ten green multi-exercise items to none before
+authoring. This changed matrix has not received a fresh review; request that
+check before the pilot/authoring rather than inventing confirmation.
 
 Each safety class fully crosses **five grouped exercise families × six traps**:
 30 populated base cells per class, **90 total**, with at least two items in every
@@ -268,6 +314,21 @@ not extra base-cell axes. Each base cell splits equally between Filip and Patric
 | Yellow | 60 | 30 | 30 | 40 | 20 |
 | Red | 80 | 40 | 40 | 0 | 0 |
 | **Total** | **250** | **125** | **125** | **94** | **47** |
+
+| Primary trap | Green | Yellow | Red | Green per author | Yellow per author | Red per author |
+|---|---:|---:|---:|---:|---:|---:|
+| figurative | 14 | 10 | 14 | 7 | 5 | 7 |
+| negated | 14 | 10 | 14 | 7 | 5 | 7 |
+| slang/typo | 14 | 10 | 12 | 7 | 5 | 6 |
+| boundary | 12 | 10 | 14 | 6 | 5 | 7 |
+| multi-exercise | **20** | 10 | 14 | 10 | 5 | 7 |
+| none | **36** | 10 | 12 | 18 | 5 | 6 |
+| **Total** | **110** | **60** | **80** | **55** | **30** | **40** |
+
+Exactly one item per author in each of the five green groups moved from
+multi-exercise to none, retaining its phrasing ID, manifest subfamily and
+resolved/unresolved identity target. Only those ten base cells changed; the
+other 80 base cells and global phrasing/subfamily allocations are unchanged.
 
 Green hard negatives are **54/110**, approximately **49.1%**, replacing 78/110.
 All figurative, negated, slang/typo and boundary cells within green/yellow form
@@ -330,7 +391,7 @@ crossed inside every two-item base cell.
 | `pf_gd_08` | 15 | 8 | 11 | 34 |
 | **Total** | **110** | **60** | **80** | **250** |
 
-The 180 nested allocations **partition** the 90 base cells. Add child counts
+The 190 nested allocations **partition** the 90 base cells. Add child counts
 to recover the parent's count; do not add parent and child totals together.
 Author-specific children may have zero for the other author; equality is
 required for each complete base cell. One primary trap per item determines the
@@ -342,10 +403,12 @@ Humans must coordinate that slice within the 125 and these counts; no extra
 messages or a matching quota for Filip are invented. No personal logs were
 accessed. Authoring remains outside Fi1's technical implementation.
 
-**Private draft compatibility:** any private Fi4 assistant using the former
-30-cell matrix, generic styles or flat-cell layout is now outdated. Refresh its
-matrix locally and revalidate counts/mappings before further authoring. No
-private folder or draft was accessed, inspected or modified here.
+**Private draft compatibility:** a private Fi4 assistant still using the previous
+90-cell matrix with green multi-exercise 30 / none 26 needs another local matrix
+refresh to **20 / 36**, including the 190 nested allocations. Earlier 30-cell,
+generic-style or flat-cell copies are also outdated. Revalidate locally before
+authoring. No private folder or draft was inspected, so its actual current
+version is unknown; no private copy was modified here.
 
 ## Agreement script: seven nominal fields
 
@@ -358,15 +421,17 @@ allows explicit alternate JSON Pointers without guessing their nesting.
 |---|---|
 | `triage_level`, `exercise_id`, `kinematic_observation`, `outcome` | Nominal unweighted Cohen's kappa **>= 0.70 on every headline field**, plus adjudication of every red-versus-not-red disagreement. Undefined headline kappa requires review. |
 
-| Numeric field | Proposed exact-match categories |
+| Numeric field | Exact-match categories confirmed by Patrick |
 |---|---|
 | `load` | Exact numeric value **and** exact `kg`/`lb` unit, or explicit null. |
 | `reps` | Exact strict nonnegative integer, or explicit null. |
 | `rpe` | Exact finite numeric value in inclusive `[0, 10]`, or explicit null. |
 
-Patrick proposed this numeric convention; it is implemented for review, with
-**final team/evaluation-owner confirmation pending [TO VERIFY]**. Numeric fields
-are reported separately and have **no automatic acceptance threshold**.
+Patrick confirmed this seven-field nominal agreement method, including the
+numeric convention, in his final review of `bc7a85b` on **2026-11-25**. Numeric
+fields are reported separately and have **no automatic acceptance threshold**.
+This records Fi1 review approval, not fabricated confirmation by every training
+or evaluation owner, and does not represent actual pilot agreement.
 
 Two nulls agree; null and a value disagree. Equal load/RPE numeric values such
 as 80 and 80.0 agree. Units remain different categories even when physically
@@ -383,19 +448,20 @@ The script rejects invalid enums/IDs, malformed load objects, invalid units,
 negative loads/reps, RPE outside 0-10, booleans, numeric strings, NaN/infinity,
 duplicate JSON keys/identifiers, malformed JSONL and mismatched item sets.
 It preserves identifier types and source label counts; null items are not dropped.
-Canonical ID membership still requires the pinned vocabulary/F2 validation
-context. This utility validates selected field projections, not the full F2
+Selected exercise IDs are checked against D7's pinned vocabulary plus `unknown`;
+aliases are rejected, not resolved. This utility validates selected field projections, not the full F2
 record, its exercise linkage or its semantic truth.
 
 Humans execute this locally with Python 3.11:
 
 ```powershell
-python scripts/kappa.py filip-labels.jsonl patrick-labels.jsonl --id-pointer /item_id --field exercise_id=/labels/exercise_id --field kinematic_observation=/labels/kinematic_observation --field load=/labels/load --field reps=/labels/reps --field outcome=/labels/outcome --field rpe=/labels/rpe --field triage_level=/labels/triage_level --json
+uv run --no-sync python scripts/kappa.py filip-labels.jsonl patrick-labels.jsonl --id-pointer /item_id --field exercise_id=/labels/exercise_id --field kinematic_observation=/labels/kinematic_observation --field load=/labels/load --field reps=/labels/reps --field outcome=/labels/outcome --field rpe=/labels/rpe --field triage_level=/labels/triage_level --json
 ```
 
 The filenames above are local placeholders, not newly prescribed pilot paths.
-This command was not executed against pilot data. A configured uv environment
-may use `uv run --python 3.11 python` in place of `python`.
+This command was not executed against pilot data. Use the frozen core/dev
+environment below; a directly activated equivalent Python 3.11 environment can
+run the script with `python`.
 
 The JSON report keeps headline metrics in `fields` and numeric metrics in
 `numeric_fields`. Top-level `threshold` and `review_required` apply to selected
@@ -421,34 +487,45 @@ does not establish acceptance across all four headline fields.
 
 ### Technical validation, not pilot agreement
 
-On **2026-11-25**, the complete Fi1 suite passed under Python **3.11.18** and
-pytest **9.2.0**: **66 tests and 233 subtests passed in 13.91 seconds**, exit code
-**0**. All three pinned F2 conformance checks ran successfully in this checkout;
-unavailable Git objects elsewhere produce explicit skips, never fabricated
-compatibility claims. F2 code was not executed or merged.
+The historical **2026-11-25** result was 66 tests and 233 subtests, with F2 checks
+against the then-pinned Git object. That is provenance only. Current normal
+tests import merged F2 enums/models, compare the checked-in extraction/load
+schemas, and use the pinned D7 vocabulary. Missing merged contracts fail tests;
+no historical Git object is required and no optional conformance skip remains.
 
-The test command, with an isolated temporary uv environment active, was:
+On **2026-11-28**, Python **3.11.18** and pytest **9.2.0** ran the complete Fi1
+suite: **78 tests and 273 subtests passed in 36.51 seconds**, exit code **0**,
+with no failed or skipped tests. This is synthetic technical verification, not
+an agreement measurement on pilot items.
+
+For local validation, use the repository's frozen core/dev groups:
 
 ```powershell
-uv run --no-project --active --offline python -B -m pytest tests/test_kappa.py tests/test_sampling_matrix.py -q -p no:cacheprovider --confcutdir=tests --basetemp "$fi1TestTemp\pytest-verified"
+uv sync --frozen --no-default-groups --group core --group dev
+uv run --no-sync python -B -m pytest tests/test_kappa.py tests/test_sampling_matrix.py -q -p no:cacheprovider --confcutdir=tests -ra
+uv run --no-sync ruff check --no-cache scripts/kappa.py tests/test_kappa.py tests/test_sampling_matrix.py
+git diff --check -- docs/labeling-guideline.md data/golden/sampling_matrix.yaml scripts/kappa.py tests/test_kappa.py tests/test_sampling_matrix.py
 ```
 
-`$fi1TestTemp` denotes the temporary run directory. No permanent dependency or
-validation script was added. The complete five-file diff, type annotations,
-local references and whitespace were checked. Only synthetic label projections,
-schema blobs and the authorized count-only matrix were read by these checks.
-The tests cover the 90-cell crossing and nested accounting, family/phrasing
-coverage, all seven agreement fields, explicit nulls, strict invalid inputs,
-exact numeric comparison, and separate headline/numeric acceptance behavior.
-These are technical test results, not pilot agreement measurements.
+For this session the same frozen groups were installed in an isolated temporary
+uv environment, with temporary test outputs outside the repository. No permanent
+dependency or validation script was added. Tests read only synthetic label
+projections, current public schema/vocabulary contracts and the authorized
+count-only matrix. They cover 90-cell crossing, the ten-item transfer, 190 nested
+allocations, family/phrasing coverage, seven-field agreement, numeric/null
+strictness, F2 compatibility and D7 membership without alias conversion.
 
 ## Human pilot and review procedure
 
-1. Patrick confirms the revised allocations and reviews these changes. Obtain
-   David/Fineas's expanded symptom-policy confirmation and final confirmation of
-   the numeric exact-match convention. Confirm pinned exercise IDs and the
-   instructor's sealed-author-label protocol. Do not re-open the reviewer
-   decisions already recorded above as unanswered questions.
+1. Check the corrected allocation against Patrick's conditional request and have
+   humans review the changed matrix before using private authoring copies; no
+   fresh review is claimed here. Patrick's seven-field agreement method and
+   David's human-policy/gate distinction are already confirmed. Obtain Fineas's
+   training-data alignment, settle non-radiating tingling and any remaining
+   cross-owner conflict, and confirm the instructor's sealed-author-label
+   protocol. Validate IDs through available F2/D7 rather than treating vocabulary
+   availability as pending. Human authoring uses merged P1's actual pool loader;
+   only authorized humans consult restricted family details.
 2. Filip and Patrick each author **10 new human-only pilot items**, kept separate
    from the 250 unless the team explicitly decides otherwise. Actual pilot data
    belongs in restricted `data/golden/pilot/`. Reuse neither guideline examples
@@ -484,9 +561,10 @@ or measured during this work. Synthetic test results are not pilot agreement.
 | Independent seven-field labels for the same 20 identifiers | Pending. |
 | Four headline kappas and three separate numeric kappas | Pending; no measurements fabricated. |
 | Red/non-red adjudication log and guideline revisions | Pending actual findings. |
-| Patrick's review | Requested changes received at `186c53d`; follow-up confirmation of this revision pending. |
-| David/Fineas symptom-policy approval | Pending. |
-| Final numeric agreement convention confirmation | Pending. |
+| Patrick's review | Approved `bc7a85b`; conditional ten-item correction applied here. No fresh review of this changed matrix claimed. |
+| David's review | Guideline/kappa/tests approved; existing human policy retained despite broader gate rules. Matrix not inspected by David. |
+| Fineas and cross-owner alignment | Pending training-data alignment and final non-radiating-tingling human-label decision. |
+| Seven-field agreement convention | Confirmed by Patrick; actual pilot results still pending. |
 
 Fi1 remains open until the human pilot, any required revisions and final review
 are available.

@@ -64,6 +64,56 @@ class SamplingMatrixTests(unittest.TestCase):
                     self.matrix["targets"]["by_author"][author], {**EXPECTED_PER_AUTHOR, "total": 125},
                 )
 
+    def test_final_trap_targets_by_class_and_author(self) -> None:
+        expected = {
+            "green": dict(zip(self.matrix["trap_types"], (14, 14, 14, 12, 20, 36))),
+            "yellow": dict.fromkeys(REQUIRED_TRAPS, 10),
+            "red": dict(zip(self.matrix["trap_types"], (14, 14, 12, 14, 14, 12))),
+        }
+        self.assertEqual(self.matrix["trap_types"], [
+            "figurative", "negated", "slang/typo", "boundary", "multi-exercise", "none",
+        ])
+        for level, targets in expected.items():
+            totals = Counter()
+            for cell in self.cells:
+                if cell["safety_class"] == level:
+                    totals[cell["trap_type"]] += cell["count"]
+            self.assertEqual(totals, targets)
+            for author in ("Filip", "Patrick"):
+                author_totals = Counter()
+                for cell in self.cells:
+                    if cell["safety_class"] == level:
+                        author_totals[cell["trap_type"]] += cell["by_author"][author]
+                self.assertEqual(author_totals, {trap: value // 2 for trap, value in targets.items()})
+
+    def test_green_correction_is_even_across_groups(self) -> None:
+        none_targets = dict(zip(FAMILY_MAPPING, (6, 8, 8, 6, 8)))
+        for cell in self.cells:
+            if cell["safety_class"] == "green" and cell["trap_type"] in {"multi-exercise", "none"}:
+                expected = 4 if cell["trap_type"] == "multi-exercise" else none_targets[cell["exercise_family"]]
+                self.assertEqual(cell["count"], expected)
+                self.assertEqual(cell["by_author"], {"Filip": expected // 2, "Patrick": expected // 2})
+
+    def test_green_transfer_preserves_the_original_planning_coordinates(self) -> None:
+        # One item per author moved with its phrase, manifest family and identity intact.
+        moved = {
+            "squat pattern": (("pf_gd_05", "squat", "resolved"), ("pf_gd_08", "squat", "resolved")),
+            "hip hinge": (("pf_gd_06", "deadlift", "resolved"), ("pf_gd_01", "deadlift", "resolved")),
+            "upper-body press": (("pf_gd_07", "bench", "resolved"), ("pf_gd_02", "overhead_press", "resolved")),
+            "upper-body pull": (("pf_gd_08", "row", "resolved"), ("pf_gd_03", "row", "resolved")),
+            "other or unresolved family": (("pf_gd_01", "accessories", "resolved"),
+                                           ("pf_gd_04", "accessories", "unresolved")),
+        }
+        for family, coordinates in moved.items():
+            for author, key in zip(("Filip", "Patrick"), coordinates):
+                for trap, count in (("multi-exercise", 2), ("none", 1)):
+                    cell = next(c for c in self.cells if (c["safety_class"], c["exercise_family"], c["trap_type"])
+                                == ("green", family, trap))
+                    part = next(p for p in cell["allocations"] if
+                                (p["phrasing_family"], p["manifest_family"], p["identity_target"]) == key)
+                    self.assertEqual(part["count"], count)
+                    self.assertEqual(part["by_author"][author], count)
+
     def test_base_cells_have_equal_author_counts_and_at_least_two_items(self) -> None:
         for cell in self.cells:
             with self.subTest(group=cell["exercise_family"], trap=cell["trap_type"], level=cell["safety_class"]):
