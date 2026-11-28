@@ -9,20 +9,10 @@ from collections.abc import Mapping
 import json
 import math
 from types import MappingProxyType
-from typing import Literal, get_args
+from src.schemas.enums import EvidenceLevel, HypothesisLabel, TriageLevel
 
-HypothesisLabel = Literal[
-    "insufficient_weekly_volume",
-    "fatigue_accumulation",
-    "stagnant_load_progression",
-    "load_spike",
-    "inconsistent_frequency",
-    "logging_quality_issue",
-    "confounder_present",
-]
-EvidenceLevel = Literal["supported", "weak", "insufficient"]
-GateOutcome = Literal["green", "yellow", "red"]
-HYPOTHESIS_LABELS: tuple[str, ...] = get_args(HypothesisLabel)
+GateOutcome = TriageLevel
+HYPOTHESIS_LABELS: tuple[str, ...] = tuple(item.value for item in HypothesisLabel)
 
 
 def nonempty(value: object, name: str) -> None:
@@ -80,8 +70,10 @@ class ExpectedHypothesis:
     def __post_init__(self) -> None:
         if self.label not in HYPOTHESIS_LABELS:
             raise ValueError("unknown hypothesis label; abstention is not a label")
-        if self.evidence not in get_args(EvidenceLevel):
+        if self.evidence not in tuple(EvidenceLevel):
             raise ValueError("unknown evidence level")
+        object.__setattr__(self, "label", HypothesisLabel(self.label))
+        object.__setattr__(self, "evidence", EvidenceLevel(self.evidence))
 
 
 @dataclass(frozen=True)
@@ -122,8 +114,9 @@ class GroundTruth:
             nonempty(reason, "abstention reason")
         if self.abstain and not self.abstention_reasons:
             raise ValueError("abstention requires an explicit reason")
-        if self.gate_outcome not in get_args(GateOutcome):
+        if self.gate_outcome not in tuple(GateOutcome):
             raise ValueError("unknown gate outcome")
+        object.__setattr__(self, "gate_outcome", GateOutcome(self.gate_outcome))
         if not isinstance(self.injected_parameters, Mapping):
             raise ValueError("injected_parameters must be an object")
         _check_json(self.injected_parameters)
@@ -133,11 +126,11 @@ class GroundTruth:
         return {
             "scenario_id": self.scenario_id,
             "expected_hypotheses": [
-                {"label": item.label, "evidence": item.evidence} for item in self.expected_hypotheses
+                {"label": item.label.value, "evidence": item.evidence.value} for item in self.expected_hypotheses
             ],
             "abstain": self.abstain,
             "abstention_reasons": list(self.abstention_reasons),
-            "gate_outcome": self.gate_outcome,
+            "gate_outcome": self.gate_outcome.value,
             "injected_parameters": json.loads(json_bytes(self.injected_parameters)),
             "cluster_id": self.cluster_id,
             "has_confounder": self.has_confounder,
